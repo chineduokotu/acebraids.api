@@ -28,11 +28,29 @@ export const getProducts = async (req, res) => {
       query.isNewArrival = true;
     }
 
-    if (search) {
+    if (search?.trim()) {
+      const searchPattern = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const matchingCategories = await Category.find({
+        $or: [
+          { name: { $regex: searchPattern, $options: 'i' } },
+          { slug: { $regex: searchPattern, $options: 'i' } },
+        ],
+      }).select('_id');
+
       query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
+        { name: { $regex: searchPattern, $options: 'i' } },
+        { slug: { $regex: searchPattern, $options: 'i' } },
+        { description: { $regex: searchPattern, $options: 'i' } },
+        { details: { $regex: searchPattern, $options: 'i' } },
+        { hairCareTips: { $regex: searchPattern, $options: 'i' } },
+        { 'variants.label': { $regex: searchPattern, $options: 'i' } },
+        { 'variants.color': { $regex: searchPattern, $options: 'i' } },
+        { 'variants.sku': { $regex: searchPattern, $options: 'i' } },
       ];
+
+      if (matchingCategories.length > 0) {
+        query.$or.push({ category: { $in: matchingCategories.map(category => category._id) } });
+      }
     }
 
     let sortOptions = { createdAt: -1 };

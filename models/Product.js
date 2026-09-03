@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 const variantSchema = new mongoose.Schema({
   label: { type: String, default: '' },
   color: { type: String, default: 'Natural Black (#1B)' },
-  length: { type: String, default: '26 Inch' },
+  length: { type: String, default: '' },
   capSize: { type: String, default: 'Medium (Average)' },
   stock: { type: Number, default: 20 },
   sku: { type: String, default: '' },

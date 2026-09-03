@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import { Category } from '../models/Category.js';
 import { Product } from '../models/Product.js';
@@ -10,6 +11,7 @@ import { connectDB, disconnectDB } from './db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 // Helper to copy existing images & videos into server/uploads
 const syncWorkspaceAssets = () => {
@@ -103,199 +105,404 @@ export const runSeed = async () => {
   await Product.deleteMany({});
   const productsData = [
     {
-      name: 'Empress Island Boho Knotless Braided Wig',
-      slug: 'empress-island-boho-knotless-braided-wig',
+      name: 'BLONDI MERO',
+      slug: 'blondi-mero',
       category: catMap['premium-braided-wigs'],
-      description: 'Our crown jewel. 100% hand-braided HD swiss lace knotless braids infused with luxury French human hair curls. Ultra-lightweight on the scalp with pre-plucked natural hairline and subtle baby hairs.',
+      description: '• 100% Human Hair Base\n• Boho Bouncy with Bangs\n• Lightweight\n• 5x5 Closure\n• Color: Blonde',
       details: [
-        'Full HD Transparent Lace for invisible melt',
-        'Pre-plucked natural hairline with bleached micro-knots',
-        'Weighs less than 420g — zero neck tension',
-        'Comes with adjustable elastic band and inner combs',
-        'Tangle-resistant premium human curl blend'
+        'Ultra-thin Invisible HD Lace for a flawless, natural hairline melt',
+        'Pre-plucked natural hairline with bleached micro-knots for maximum realism',
+        'Infused with silky, tangle-resistant bohemian curls',
+        'Ultra-lightweight cap structure with adjustable elastic support band',
+        '100% glueless installation — ready to wear straight out of the box'
       ],
       hairCareTips: [
-        'Apply a lightweight foam mousse weekly to maintain curls',
-        'Sleep with a silk or satin bonnet',
-        'Wash gently with sulfate-free shampoo in lukewarm water'
+        'Apply light curl mousse to define and revive curls',
+        'Protect with a satin bonnet overnight'
       ],
-      price: 245.00,
-      discountPrice: 219.00,
-      isFeatured: true,
-      isNewArrival: true,
-      rating: 4.9,
-      reviewsCount: 38,
-      images: [
-        { url: '/uploads/IMG_6920.PNG', alt: 'Empress Island Boho Knotless Wig front view', isMain: true },
-        { url: '/uploads/IMG_6917_2.PNG', alt: 'Model wearing Boho Knotless Braids' },
-        { url: '/uploads/IMG_4065.PNG', alt: 'Scalp lace detail' },
-      ],
-      videos: [
-        { url: '/uploads/2b96717a-1b2c-4f17-9375-e1234043a67a.MP4', posterUrl: '/uploads/IMG_6920.PNG', type: 'video/mp4' }
-      ],
-      variants: [
-        { label: '1B Natural Black / 30 Inch', color: '1B Natural Black', length: '30 Inch', capSize: 'Medium (22.5")', stock: 12, sku: 'ABB-EIB-1B-30-M' },
-        { label: '1B/30 Ombre Honey / 30 Inch', color: '1B/30 Ombre Honey', length: '30 Inch', capSize: 'Medium (22.5")', stock: 8, sku: 'ABB-EIB-30-30-M' },
-        { label: '1B Natural Black / 36 Inch', color: '1B Natural Black', length: '36 Inch', capSize: 'Medium (22.5")', stock: 5, sku: 'ABB-EIB-1B-36-M' },
-        { label: '#27 Golden Glow / 26 Inch', color: '#27 Golden Glow', length: '26 Inch', capSize: 'Small (21.5")', stock: 6, sku: 'ABB-EIB-27-26-S' },
-      ]
-    },
-    {
-      name: 'Luxe Goddess Pre-Looped Boho Crochet Packs',
-      slug: 'luxe-goddess-pre-looped-boho-crochet-packs',
-      category: catMap['ready-to-install-boho-crochet-extensions'],
-      description: 'Quick, gorgeous, salon-quality crochet braids. Pre-looped and pre-separated with bouncy bohemian ringlets interspersed throughout. Complete your full install in under 90 minutes.',
-      details: [
-        '6 Packs included in standard bundle (Full Head)',
-        'Pre-stretched & pre-looped for effortless latch-hook installation',
-        'Silky texture with feather-light density',
-        'Long-lasting curl pattern that holds through moisture'
-      ],
-      hairCareTips: [
-        'Separate curls with fingers coated in argan or jojoba oil',
-        'Wear a high pineapple with a satin scarf overnight'
-      ],
-      price: 68.00,
-      discountPrice: 59.99,
-      isFeatured: true,
-      isNewArrival: false,
-      rating: 4.8,
-      reviewsCount: 64,
-      images: [
-        { url: '/uploads/IMG_6917_2.PNG', alt: 'Luxe Goddess Boho Crochet Packs', isMain: true },
-        { url: '/uploads/IMG_6241.PNG', alt: 'Full install goddess crochet' },
-      ],
-      videos: [
-        { url: '/uploads/b0764e66-7500-4cbd-b533-914f75dc8623.MP4', posterUrl: '/uploads/IMG_6917_2.PNG', type: 'video/mp4' }
-      ],
-      variants: [
-        { label: '1B Natural Black / 24 Inch (6 Packs)', color: '1B Natural Black', length: '24 Inch', capSize: 'N/A', stock: 35, sku: 'ABB-LGC-1B-24' },
-        { label: '1B/30 Caramel Swirl / 24 Inch (6 Packs)', color: '1B/30 Caramel Swirl', length: '24 Inch', capSize: 'N/A', stock: 20, sku: 'ABB-LGC-30-24' },
-        { label: '99J Burgundy Wine / 28 Inch (6 Packs)', color: '99J Burgundy Wine', length: '28 Inch', capSize: 'N/A', stock: 15, sku: 'ABB-LGC-99J-28' },
-      ]
-    },
-    {
-      name: 'Signature Sleek Boho Drawstring Ponytail',
-      slug: 'signature-sleek-boho-drawstring-ponytail',
-      category: catMap['premium-boho-ponytail-extensions'],
-      description: 'The ultimate high-glam power move. Features micro-braided accents transitioning seamlessly into lush bohemian beach waves. Built-in combs and reinforced drawstring guarantee 24-hour security.',
-      details: [
-        'Secure dual-comb base + heavy-duty adjustable drawstring',
-        'Zero salon appointment required — install in 45 seconds',
-        'Silky, natural lustre matching Type 3/4 pressed hair',
-        'Lightweight, tangle-free synthetic and human curl blend'
-      ],
-      hairCareTips: [
-        'Gently finger-comb the wavy ends starting from the tips',
-        'Store on a wig stand or in the signature Ace satin pouch'
-      ],
-      price: 75.00,
-      discountPrice: 65.00,
+      price: 110.00,
+      discountPrice: 110.00,
       isFeatured: true,
       isNewArrival: true,
       rating: 5.0,
-      reviewsCount: 29,
+      reviewsCount: 42,
       images: [
-        { url: '/uploads/IMG_6242.PNG', alt: 'Signature Sleek Boho Ponytail', isMain: true },
-        { url: '/uploads/IMG_6920.PNG', alt: 'Ponytail side profile' },
+        { url: '/uploads/IMG_6920.PNG', alt: 'BLONDI MERO unit front view', isMain: true },
+        { url: '/uploads/IMG_6917_2.PNG', alt: 'BLONDI MERO side view' },
+        { url: '/uploads/IMG_4065.PNG', alt: 'BLONDI MERO HD lace texture' },
       ],
       videos: [
-        { url: '/uploads/c195b193-6dbf-46d9-a79c-82f19d3c9929.MP4', posterUrl: '/uploads/IMG_6242.PNG', type: 'video/mp4' }
+        { url: '/uploads/BlonDie.mp4', posterUrl: '/uploads/IMG_6920.PNG', type: 'video/mp4' }
       ],
       variants: [
-        { label: '1B Natural Black / 26 Inch', color: '1B Natural Black', length: '26 Inch', capSize: 'Universal', stock: 24, sku: 'ABB-SBP-1B-26' },
-        { label: '#4 Chocolate Brown / 26 Inch', color: '#4 Chocolate Brown', length: '26 Inch', capSize: 'Universal', stock: 14, sku: 'ABB-SBP-04-26' },
-        { label: '#27 Honey Blonde / 30 Inch', color: '#27 Honey Blonde', length: '30 Inch', capSize: 'Universal', stock: 10, sku: 'ABB-SBP-27-30' },
+        { label: 'Honey Blonde Mix', color: 'Honey Blonde Mix', capSize: 'Medium (22.5")', stock: 14, sku: 'ABB-BLM-1' },
+        { label: '1B/27 Ombre', color: '1B/27 Ombre', capSize: 'Medium (22.5")', stock: 6, sku: 'ABB-BLM-2' },
       ]
     },
     {
-      name: 'Royal Comfort Full-Cap Cornrow & Curls Wig',
-      slug: 'royal-comfort-full-cap-cornrow-curls-wig',
+      name: 'WIG NAOMI',
+      slug: 'wig-naomi',
       category: catMap['exquisite-cap-braided-wigs'],
-      description: 'Crafted on a stretch-mesh dome cap with precision-stitched cornrows and flowing curls at the crown and perimeter. No glue, no gel, no edge damage. Ideal for active lifestyles and daily glam.',
+      description: '• 100% Human Hair Base\n• Boho Bouncy with Bangs\n• Lightweight\n• 5x5 Closure\n• Color: Mixed Brown',
       details: [
-        'Breathable open-weft stretch cap with silicone grip band',
-        'Glueless install with zero tension on delicate edges',
-        'Precision neat stitch cornrows that will never unravel',
-        'Ready to wear right out of the luxury presentation box'
+        'Premium HD Lace frontal offering an invisible, melted hairline',
+        'Glueless secure fit with inner silicone grip band and adjustable straps',
+        'Masterfully braided with durable, feather-light luxury fibers',
+        'Zero glue or gel required — salon-ready in seconds',
+        'Includes signature Ace satin protective storage bag'
       ],
       hairCareTips: [
-        'Air dry completely after freshening curls',
-        'Never spray heavy alcohol-based lacquers directly onto the base'
+        'Finger comb curls with a drop of argan oil',
+        'Air dry thoroughly after light cleansing'
       ],
-      price: 185.00,
-      discountPrice: 165.00,
+      price: 110.00,
+      discountPrice: 110.00,
       isFeatured: true,
-      isNewArrival: false,
+      isNewArrival: true,
+      rating: 4.9,
+      reviewsCount: 36,
+      images: [
+        { url: '/uploads/IMG_6917_2.PNG', alt: 'WIG NAOMI front view', isMain: true },
+        { url: '/uploads/IMG_6241.PNG', alt: 'WIG NAOMI detail' },
+        { url: '/uploads/IMG_4065.PNG', alt: 'WIG NAOMI HD lace interior' },
+      ],
+      videos: [
+        { url: '/uploads/naomi.mp4', posterUrl: '/uploads/IMG_6917_2.PNG', type: 'video/mp4' }
+      ],
+      variants: [
+        { label: '1B Natural Black', color: '1B Natural Black', capSize: 'Medium (22.5")', stock: 16, sku: 'ABB-WNM-1B-M' },
+        { label: '1B/30 Ombre Caramel', color: '1B/30 Ombre Caramel', capSize: 'Medium (22.5")', stock: 9, sku: 'ABB-WNM-30-M' },
+      ]
+    },
+    {
+      name: 'WIG LAUREL',
+      slug: 'wig-laurel',
+      category: catMap['exquisite-cap-braided-wigs'],
+      description: '• 100% Human Hair Base\n• Boho Bouncy with Bangs\n• Lightweight\n• 5x5 Closure\n• Color: Black',
+      details: [
+        'High-definition HD Lace base with invisible scalp melt',
+        'Neat micro-braided crown transitioning into a chic front fringe',
+        'Ultra-soft, bouncy bohemian curls',
+        '100% glueless cap with secure adjustable elastic band',
+        'Feather-light density that eliminates neck strain'
+      ],
+      hairCareTips: [
+        'Fluff curls gently with fingers using a light curl mousse',
+        'Sleep in a satin bonnet to preserve bounce'
+      ],
+      price: 110.00,
+      discountPrice: 110.00,
+      isFeatured: true,
+      isNewArrival: true,
+      rating: 5.0,
+      reviewsCount: 28,
+      images: [
+        { url: '/uploads/IMG_6920.PNG', alt: 'WIG LAUREL front view', isMain: true },
+        { url: '/uploads/IMG_6241.PNG', alt: 'WIG LAUREL texture detail' }
+      ],
+      variants: [
+        { label: '1B Natural Black', color: '1B Natural Black', capSize: 'Medium (22.5")', stock: 12, sku: 'ABB-WGL-1B-M' }
+      ]
+    },
+    {
+      name: 'WIG JAY',
+      slug: 'wig-jay',
+      category: catMap['exquisite-cap-braided-wigs'],
+      description: '• 100% Human Hair Base\n• Boho Bouncy with Bangs\n• Lightweight\n• 5x5 Closure\n• Color: Wine',
+      details: [
+        'Invisible HD Lace for a completely natural, melted appearance',
+        'Radiant copper/auburn multi-tonal blend with soft root shading',
+        'Full front fringe bangs with soft, bouncy bohemian ringlets',
+        'Glueless breathable stretch cap with snug silicone grip band',
+        'Pre-styled and ready to wear right out of the luxury box'
+      ],
+      hairCareTips: [
+        'Mist with water and leave-in conditioner to refresh waves',
+        'Keep stored in the Ace signature satin bag'
+      ],
+      price: 110.00,
+      discountPrice: 110.00,
+      isFeatured: true,
+      isNewArrival: true,
+      rating: 4.9,
+      reviewsCount: 34,
+      images: [
+        { url: '/uploads/IMG_6917_2.PNG', alt: 'WIG JAY front view', isMain: true },
+        { url: '/uploads/IMG_6242.PNG', alt: 'WIG JAY curl texture' }
+      ],
+      variants: [
+        { label: '#350 Copper Rust', color: '#350 Copper Rust', capSize: 'Medium (22.5")', stock: 15, sku: 'ABB-WGJ-350-M' },
+        { label: '#30 Auburn Brown', color: '#30 Auburn Brown', capSize: 'Medium (22.5")', stock: 10, sku: 'ABB-WGJ-30-M' }
+      ]
+    },
+    {
+      name: 'Wig Aneeta',
+      slug: 'wig-aneeta-1',
+      category: catMap['exquisite-cap-braided-wigs'],
+      description: 'Ready-to-wear braided scarf wig',
+      details: [
+        'Ready-to-wear braided scarf wig designed for effortless instant styling',
+        'Comfortable, breathable stretch fabric scarf attachment with secure fit',
+        'Ultra-lightweight hand-crafted braids with natural movement',
+        'Zero glue, gel, or lace cutting required — slip on and go in seconds',
+        'Includes signature Ace satin protective storage bag'
+      ],
+      hairCareTips: [
+        'Hand wash scarf band gently with mild detergent and air dry',
+        'Store in satin bag to keep braids neat and tangle-free'
+      ],
+      price: 19.99,
+      discountPrice: 19.99,
+      isFeatured: true,
+      isNewArrival: true,
+      rating: 4.9,
+      reviewsCount: 18,
+      images: [],
+      videos: [
+        { url: '/uploads/aneeta.mp4', type: 'video/mp4' }
+      ],
+      variants: [
+        { label: 'Natural Black', color: 'Natural Black', capSize: 'Flexible Scarf Fit', stock: 20, sku: 'ABB-WGA-STD-1' }
+      ]
+    },
+    {
+      name: 'Wig Aneeta',
+      slug: 'wig-aneeta-2',
+      category: catMap['exquisite-cap-braided-wigs'],
+      description: 'Ready-to-wear braided scarf wig',
+      details: [
+        'Ready-to-wear braided scarf wig designed for effortless instant styling',
+        'Comfortable, breathable stretch fabric scarf attachment with secure fit',
+        'Ultra-lightweight hand-crafted braids with natural movement',
+        'Zero glue, gel, or lace cutting required — slip on and go in seconds',
+        'Includes signature Ace satin protective storage bag'
+      ],
+      hairCareTips: [
+        'Hand wash scarf band gently with mild detergent and air dry',
+        'Store in satin bag to keep braids neat and tangle-free'
+      ],
+      price: 19.99,
+      discountPrice: 19.99,
+      isFeatured: true,
+      isNewArrival: true,
+      rating: 4.9,
+      reviewsCount: 18,
+      images: [],
+      videos: [
+        { url: '/uploads/aneeta2.mp4', type: 'video/mp4' }
+      ],
+      variants: [
+        { label: 'Natural Black', color: 'Natural Black', capSize: 'Flexible Scarf Fit', stock: 20, sku: 'ABB-WGA-STD-2' }
+      ]
+    },
+    {
+      name: 'Wig Aneeta',
+      slug: 'wig-aneeta-3',
+      category: catMap['exquisite-cap-braided-wigs'],
+      description: 'Ready-to-wear braided scarf wig',
+      details: [
+        'Ready-to-wear braided scarf wig designed for effortless instant styling',
+        'Comfortable, breathable stretch fabric scarf attachment with secure fit',
+        'Ultra-lightweight hand-crafted braids with natural movement',
+        'Zero glue, gel, or lace cutting required — slip on and go in seconds',
+        'Includes signature Ace satin protective storage bag'
+      ],
+      hairCareTips: [
+        'Hand wash scarf band gently with mild detergent and air dry',
+        'Store in satin bag to keep braids neat and tangle-free'
+      ],
+      price: 19.99,
+      discountPrice: 19.99,
+      isFeatured: true,
+      isNewArrival: true,
+      rating: 4.9,
+      reviewsCount: 18,
+      images: [],
+      videos: [
+        { url: '/uploads/aneeta3.mp4', type: 'video/mp4' }
+      ],
+      variants: [
+        { label: 'Natural Black', color: 'Natural Black', capSize: 'Flexible Scarf Fit', stock: 20, sku: 'ABB-WGA-STD-3' }
+      ]
+    },
+    {
+      name: 'Wig Tara',
+      slug: 'wig-tara-1',
+      category: catMap['exquisite-cap-braided-wigs'],
+      description: 'Ready-to-wear braided cap wig',
+      details: [
+        'Ready-to-wear braided cap wig tailored for quick, protective daily styling',
+        'Breathable, elastic baseball/sun cap base with secure adjustable strap',
+        'Feather-light braided extensions seamlessly attached around the perimeter',
+        'Zero adhesive needed — beginner-friendly 30-second wear',
+        'Includes signature Ace satin protective storage bag'
+      ],
+      hairCareTips: [
+        'Gently wipe cap interior and air dry after workouts or daily wear',
+        'Lightly oil braided strands to maintain sheen and prevent frizz'
+      ],
+      price: 19.99,
+      discountPrice: 19.99,
+      isFeatured: true,
+      isNewArrival: true,
       rating: 4.9,
       reviewsCount: 22,
-      images: [
-        { url: '/uploads/IMG_4065.PNG', alt: 'Royal Comfort Cap Braided Wig', isMain: true },
-        { url: '/uploads/IMG_6917_2.PNG', alt: 'Cap detail and interior' },
-      ],
+      images: [],
       videos: [
-        { url: '/uploads/e7ca4ed1-3213-4d09-94ac-c068c8e06451.MP4', posterUrl: '/uploads/IMG_4065.PNG', type: 'video/mp4' }
+        { url: '/uploads/wigtara.mp4', type: 'video/mp4' }
       ],
       variants: [
-        { label: '1B Natural Black / 28 Inch', color: '1B Natural Black', length: '28 Inch', capSize: 'Medium (22.5")', stock: 16, sku: 'ABB-RCC-1B-28-M' },
-        { label: '1B/30 Ombre Caramel / 28 Inch', color: '1B/30 Ombre Caramel', length: '28 Inch', capSize: 'Medium (22.5")', stock: 9, sku: 'ABB-RCC-30-28-M' },
-        { label: '1B Natural Black / 28 Inch (Large Cap)', color: '1B Natural Black', length: '28 Inch', capSize: 'Large (23.5")', stock: 7, sku: 'ABB-RCC-1B-28-L' },
+        { label: 'Natural Black', color: 'Natural Black', capSize: 'Adjustable Cap Fit', stock: 20, sku: 'ABB-WGT-STD-1' }
       ]
     },
     {
-      name: 'Monaco Micro Twist HD Lace Front Wig',
-      slug: 'monaco-micro-twist-hd-lace-front-wig',
-      category: catMap['premium-braided-wigs'],
-      description: 'Feather-thin micro Senegalese twists falling effortlessly down the waist. Masterfully hand-tied on a 13x6 HD Swiss Lace frontal for multi-part styling versatility.',
+      name: 'Wig Tara',
+      slug: 'wig-tara-2',
+      category: catMap['exquisite-cap-braided-wigs'],
+      description: 'Ready-to-wear braided cap wig',
       details: [
-        '13x6 Extra-deep parting space for middle and side styling',
-        'Over 350+ individual micro twists for extreme realism',
-        'Feather-weight design ensuring breathable daily wear'
+        'Ready-to-wear braided cap wig tailored for quick, protective daily styling',
+        'Breathable, elastic baseball/sun cap base with secure adjustable strap',
+        'Feather-light braided extensions seamlessly attached around the perimeter',
+        'Zero adhesive needed — beginner-friendly 30-second wear',
+        'Includes signature Ace satin protective storage bag'
       ],
       hairCareTips: [
-        'Dip twist ends in hot water if needed to restore neat tapered finish'
+        'Gently wipe cap interior and air dry after workouts or daily wear',
+        'Lightly oil braided strands to maintain sheen and prevent frizz'
       ],
-      price: 260.00,
-      discountPrice: 235.00,
-      isFeatured: false,
+      price: 19.99,
+      discountPrice: 19.99,
+      isFeatured: true,
       isNewArrival: true,
       rating: 4.9,
-      reviewsCount: 17,
-      images: [
-        { url: '/uploads/IMG_6920.PNG', alt: 'Monaco Micro Twist HD Frontal Wig', isMain: true },
-        { url: '/uploads/IMG_6241.PNG', alt: 'Twist texture detail' }
+      reviewsCount: 22,
+      images: [],
+      videos: [
+        { url: '/uploads/wigtara2.mp4', type: 'video/mp4' }
       ],
       variants: [
-        { label: '1B Natural Black / 32 Inch', color: '1B Natural Black', length: '32 Inch', capSize: 'Medium (22.5")', stock: 8, sku: 'ABB-MMT-1B-32-M' },
-        { label: '#33 Rich Auburn / 32 Inch', color: '#33 Rich Auburn', length: '32 Inch', capSize: 'Medium (22.5")', stock: 4, sku: 'ABB-MMT-33-32-M' }
+        { label: 'Natural Black', color: 'Natural Black', capSize: 'Adjustable Cap Fit', stock: 20, sku: 'ABB-WGT-STD-2' }
       ]
     },
     {
-      name: 'Sahara Goddess Boho French Curl Braids',
-      slug: 'sahara-goddess-boho-french-curl-braids',
-      category: catMap['ready-to-install-boho-crochet-extensions'],
-      description: 'Super silky French curl crochet braids with loose romantic waves. Specially textured to eliminate frizz while giving you maximum volume and movement.',
+      name: 'Wig Tara',
+      slug: 'wig-tara-3',
+      category: catMap['exquisite-cap-braided-wigs'],
+      description: 'Ready-to-wear braided cap wig',
       details: [
-        'Pre-stretched silky fiber with bouncing spiral ends',
-        '7-Pack value bundle included',
-        'Glossy, healthy sheen'
+        'Ready-to-wear braided cap wig tailored for quick, protective daily styling',
+        'Breathable, elastic baseball/sun cap base with secure adjustable strap',
+        'Feather-light braided extensions seamlessly attached around the perimeter',
+        'Zero adhesive needed — beginner-friendly 30-second wear',
+        'Includes signature Ace satin protective storage bag'
       ],
       hairCareTips: [
-        'Comb through loosely with a wide-tooth comb and leave-in conditioner'
+        'Gently wipe cap interior and air dry after workouts or daily wear',
+        'Lightly oil braided strands to maintain sheen and prevent frizz'
       ],
-      price: 72.00,
-      discountPrice: 62.00,
-      isFeatured: false,
+      price: 19.99,
+      discountPrice: 19.99,
+      isFeatured: true,
       isNewArrival: true,
-      rating: 4.7,
-      reviewsCount: 31,
-      images: [
-        { url: '/uploads/IMG_6917_2.PNG', alt: 'Sahara French Curls Boho Braids', isMain: true },
-        { url: '/uploads/IMG_6242.PNG', alt: 'French curls texture' }
+      rating: 4.9,
+      reviewsCount: 22,
+      images: [],
+      videos: [
+        { url: '/uploads/wigtara3.mp4', type: 'video/mp4' }
       ],
       variants: [
-        { label: '1B Natural Black / 26 Inch (7 Packs)', color: '1B Natural Black', length: '26 Inch', capSize: 'N/A', stock: 22, sku: 'ABB-SGB-1B-26' },
-        { label: '#27 Champagne Blonde / 26 Inch (7 Packs)', color: '#27 Champagne Blonde', length: '26 Inch', capSize: 'N/A', stock: 11, sku: 'ABB-SGB-27-26' }
+        { label: 'Natural Black', color: 'Natural Black', capSize: 'Adjustable Cap Fit', stock: 20, sku: 'ABB-WGT-STD-3' }
+      ]
+    },
+    {
+      name: 'Wig Chioma',
+      slug: 'wig-chioma',
+      category: catMap['exquisite-cap-braided-wigs'],
+      description: 'Ready-to-wear braided bucket cap wig',
+      details: [
+        'Ready-to-wear braided bucket cap wig combining trendy streetwear with instant glam',
+        'Built-in structured bucket hat base for all-day comfort and sun protection',
+        'Lightweight, neatly braided extensions securely integrated into the rim',
+        '100% glueless installation — ready to wear straight out of the box',
+        'Includes signature Ace protective storage bag'
+      ],
+      hairCareTips: [
+        'Spot clean bucket cap exterior with a damp cloth',
+        'Store inside satin bag to retain shape'
+      ],
+      price: 19.99,
+      discountPrice: 19.99,
+      isFeatured: true,
+      isNewArrival: true,
+      rating: 4.8,
+      reviewsCount: 15,
+      images: [],
+      videos: [
+        { url: '/uploads/wigchioma.mp4', type: 'video/mp4' }
+      ],
+      variants: [
+        { label: 'Natural Black', color: 'Natural Black', capSize: 'Universal Bucket Fit', stock: 20, sku: 'ABB-WGC-STD' }
+      ]
+    },
+    {
+      name: 'Wig Sharon',
+      slug: 'wig-sharon-1',
+      category: catMap['exquisite-cap-braided-wigs'],
+      description: 'ready to wear braided head warmer wig',
+      details: [
+        'Ready to wear braided head warmer wig designed for cozy comfort and effortless instant styling',
+        'Soft, stretch head warmer headband base with secure fit',
+        'Ultra-lightweight hand-crafted braids with natural movement',
+        'Zero glue, gel, or lace cutting required — slip on and go in seconds',
+        'Includes signature Ace satin protective storage bag'
+      ],
+      hairCareTips: [
+        'Hand wash head warmer band gently with mild detergent and air dry',
+        'Store in satin bag to keep braids neat and tangle-free'
+      ],
+      price: 19.99,
+      discountPrice: 19.99,
+      isFeatured: true,
+      isNewArrival: true,
+      rating: 4.9,
+      reviewsCount: 20,
+      images: [],
+      videos: [
+        { url: '/uploads/sharon.mp4', type: 'video/mp4' }
+      ],
+      variants: [
+        { label: 'Natural Black', color: 'Natural Black', capSize: 'Flexible Head Warmer Fit', stock: 20, sku: 'ABB-WGS-STD-1' }
+      ]
+    },
+    {
+      name: 'Wig Sharon',
+      slug: 'wig-sharon-2',
+      category: catMap['exquisite-cap-braided-wigs'],
+      description: 'ready to wear braided head warmer wig',
+      details: [
+        'Ready to wear braided head warmer wig designed for cozy comfort and effortless instant styling',
+        'Soft, stretch head warmer headband base with secure fit',
+        'Ultra-lightweight hand-crafted braids with natural movement',
+        'Zero glue, gel, or lace cutting required — slip on and go in seconds',
+        'Includes signature Ace satin protective storage bag'
+      ],
+      hairCareTips: [
+        'Hand wash head warmer band gently with mild detergent and air dry',
+        'Store in satin bag to keep braids neat and tangle-free'
+      ],
+      price: 19.99,
+      discountPrice: 19.99,
+      isFeatured: true,
+      isNewArrival: true,
+      rating: 4.9,
+      reviewsCount: 20,
+      images: [],
+      videos: [
+        { url: '/uploads/sharon2.mp4', type: 'video/mp4' }
+      ],
+      variants: [
+        { label: 'Natural Black', color: 'Natural Black', capSize: 'Flexible Head Warmer Fit', stock: 20, sku: 'ABB-WGS-STD-2' }
       ]
     }
   ];
@@ -309,8 +516,7 @@ export const runSeed = async () => {
     {
       title: 'Knotless Goddess in London',
       customerName: 'Tiwa A. (London, UK)',
-      videoUrl: '/uploads/2b96717a-1b2c-4f17-9375-e1234043a67a.MP4',
-      posterUrl: '/uploads/IMG_4065.PNG',
+      videoUrl: '/uploads/shop1.MP4',
       linkedProduct: createdProducts[0]._id,
       order: 1,
       isActive: true,
@@ -318,8 +524,7 @@ export const runSeed = async () => {
     {
       title: 'Boho Crochet Glam in Berlin',
       customerName: 'Chiamaka E. (Berlin, DE)',
-      videoUrl: '/uploads/b0764e66-7500-4cbd-b533-914f75dc8623.MP4',
-      posterUrl: '/uploads/IMG_6241.PNG',
+      videoUrl: '/uploads/shop2.MP4',
       linkedProduct: createdProducts[1]._id,
       order: 2,
       isActive: true,
@@ -327,8 +532,7 @@ export const runSeed = async () => {
     {
       title: '60-Sec Sleek Ponytail Magic',
       customerName: 'Sophie M. (Manchester, UK)',
-      videoUrl: '/uploads/c195b193-6dbf-46d9-a79c-82f19d3c9929.MP4',
-      posterUrl: '/uploads/IMG_6242.PNG',
+      videoUrl: '/uploads/shop3.MP4',
       linkedProduct: createdProducts[2]._id,
       order: 3,
       isActive: true,
@@ -336,8 +540,7 @@ export const runSeed = async () => {
     {
       title: 'Royal Cap Everyday Glow',
       customerName: 'Keisha D. (Birmingham, UK)',
-      videoUrl: '/uploads/e7ca4ed1-3213-4d09-94ac-c068c8e06451.MP4',
-      posterUrl: 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=1000&q=80',
+      videoUrl: '/uploads/shop4.MP4',
       linkedProduct: createdProducts[3]._id,
       order: 4,
       isActive: true,

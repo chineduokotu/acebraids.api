@@ -15,7 +15,7 @@ const customerLookSchema = new mongoose.Schema({
   },
   posterUrl: {
     type: String,
-    required: true,
+    default: '',
   },
   linkedProduct: {
     type: mongoose.Schema.Types.ObjectId,
