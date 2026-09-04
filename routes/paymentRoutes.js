@@ -1,9 +1,15 @@
 import express from 'express';
-import { mockCheckout } from '../controllers/paymentController.js';
+import {
+  getBankDetails,
+  createBankTransferOrder,
+  confirmBankTransfer,
+} from '../controllers/paymentController.js';
 
 const router = express.Router();
 
-// Mock Checkout Endpoint
-router.post('/mock-checkout', mockCheckout);
+router.get('/bank-transfer/details', getBankDetails);
+router.post('/bank-transfer/order', createBankTransferOrder);
+router.post('/bank-transfer/:orderId/confirm', confirmBankTransfer);
 
+// Mock Checkout Endpoint
 export default router;

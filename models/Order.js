@@ -60,16 +60,40 @@ const orderSchema = new mongoose.Schema({
   },
   paymentStatus: {
     type: String,
-    enum: ['mock_paid', 'pending', 'failed'],
+    enum: ['mock_paid', 'pending', 'awaiting_verification', 'paid', 'rejected', 'failed'],
     default: 'pending',
   },
   paymentMethod: {
     type: String,
-    default: 'mock',
+    default: 'bank_transfer',
   },
   paymentRef: {
     type: String,
     required: true,
+  },
+  paymentSubmittedAt: {
+    type: Date,
+  },
+  paymentVerificationDeadline: {
+    type: Date,
+  },
+  paymentVerifiedAt: {
+    type: Date,
+  },
+  paymentRejectedAt: {
+    type: Date,
+  },
+  paymentDecisionBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+  },
+  paymentRejectionReason: {
+    type: String,
+    default: '',
+  },
+  customerPaymentNote: {
+    type: String,
+    default: '',
   },
   orderStatus: {
     type: String,
