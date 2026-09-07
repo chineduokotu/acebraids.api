@@ -1,7 +1,45 @@
-/**
- * Email Service (Mock / Extensible)
- * Simulates transactional emails for order confirmations and status updates.
- */
+import { getEmailTransport } from '../config/email.js';
+import { renderOrderEmail } from './orderEmailTemplates.js';
+
+// Payment approval and shipment use SMTP. Other hooks retain their existing behavior.
+const dispatchOrderEmail = async (event, order) => {
+  const orderId = String(order?._id || '');
+  try {
+    // Snapshot before yielding, so a later mutation cannot change the notification.
+    const snapshot = typeof order.toObject === 'function' ? order.toObject() : structuredClone(order);
+    return await new Promise(resolve => {
+      setImmediate(async () => {
+        try {
+          const recipient = snapshot.guestInfo?.email || snapshot.user?.email;
+          if (typeof recipient !== 'string' || !/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(recipient.trim())) {
+            throw Object.assign(new Error('Missing or invalid recipient'), { code: 'EMAIL_RECIPIENT' });
+          }
+          const transport = getEmailTransport();
+          const sender = process.env.EMAIL_HOST_USER.trim();
+          const message = renderOrderEmail(event, snapshot, process.env.CLIENT_URL, sender);
+          const result = await transport.sendMail({
+            from: { name: 'AceBeautyBraids', address: sender },
+            replyTo: sender,
+            to: { address: recipient.trim() },
+            ...message,
+          });
+          if (!result.accepted?.length) {
+            throw Object.assign(new Error('SMTP did not accept the recipient'), { code: 'EMAIL_REJECTED' });
+          }
+          console.info('[EMAIL SERVICE] SMTP accepted', { event, orderId, messageId: result.messageId });
+          resolve(true);
+        } catch (error) {
+          // Never log SMTP messages, credentials, bodies, or customer addresses.
+          console.warn('[EMAIL SERVICE] Notification failed', { event, orderId, code: error.code || 'EMAIL_FAILED' });
+          resolve(false);
+        }
+      });
+    });
+  } catch (error) {
+    console.warn('[EMAIL SERVICE] Notification could not be scheduled', { event, orderId, code: error.code || 'EMAIL_FAILED' });
+    return false;
+  }
+};
 
 const getRecipient = (order) => order.guestInfo?.email || order.user?.email || 'unknown customer';
 
@@ -14,8 +52,8 @@ export const sendOrderConfirmationEmail = async (order) => {
 };
 
 export const sendOrderStatusUpdateEmail = async (order) => {
-  console.log(`\n[EMAIL SERVICE] Order status update: Order ${order.trackingCode} is now '${order.orderStatus}'`);
-  return true;
+  if (order.orderStatus !== 'shipped') return false;
+  return dispatchOrderEmail('shipped', order);
 };
 
 export const sendPaymentPendingEmail = async (order) => {
@@ -26,9 +64,7 @@ export const sendPaymentPendingEmail = async (order) => {
 };
 
 export const sendPaymentApprovedEmail = async (order) => {
-  console.log(`\n[EMAIL SERVICE] Payment approved notice sent to: ${getRecipient(order)}`);
-  console.log(`   Order ${order.trackingCode} payment verified. Fulfillment status: ${order.orderStatus}\n`);
-  return true;
+  return dispatchOrderEmail('payment-approved', order);
 };
 
 export const sendPaymentRejectedEmail = async (order) => {

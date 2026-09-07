@@ -251,6 +251,7 @@ export const updateOrderStatus = async (req, res) => {
     }
 
     const { orderStatus, carrier, trackingCode, notes } = req.body;
+    const previousOrderStatus = order.orderStatus;
 
     if (orderStatus) order.orderStatus = orderStatus;
     if (carrier) order.carrier = carrier;
@@ -259,8 +260,10 @@ export const updateOrderStatus = async (req, res) => {
 
     const updatedOrder = await order.save();
 
-    // Trigger update email
-    sendOrderStatusUpdateEmail(updatedOrder).catch(console.error);
+    // Only notify on entry into shipped, after the database save succeeds.
+    if (previousOrderStatus !== 'shipped' && updatedOrder.orderStatus === 'shipped') {
+      sendOrderStatusUpdateEmail(updatedOrder).catch(console.error);
+    }
 
     res.json(updatedOrder);
   } catch (error) {
