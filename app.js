@@ -12,6 +12,7 @@ import orderRoutes from './routes/orderRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
+import adminNotificationRoutes from './routes/adminNotificationRoutes.js';
 import { notFound, errorHandler } from './middleware/errorHandler.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -21,12 +22,14 @@ const app = express();
 
 // Allow all origins (development, production, Vercel, Netlify, custom domains)
 app.use(cors({
-  origin: true, // Reflects the request origin dynamically, allowing all origins with credentials
+  origin: true,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Stripe-Signature'],
 }));
 
+app.post('/api/payments/stripe/webhook', express.raw({ type: 'application/json', limit: '1mb' }));
+app.use('/api/auth', express.json({ limit: '8kb' }), express.urlencoded({ extended: false, limit: '8kb' }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(cookieParser());
@@ -43,6 +46,7 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/admin/notifications', adminNotificationRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

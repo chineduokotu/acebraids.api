@@ -13,6 +13,8 @@ export const connectDB = async () => {
     console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
     return conn;
   } catch (error) {
+    // Credentials and revocations must remain durable in deployed environments.
+    if (process.env.NODE_ENV === 'production') throw error;
     console.warn(`⚠️ Local MongoDB connection failed (${error.message}). Falling back to MongoMemoryServer...`);
     try {
       mongoMemoryServer = await MongoMemoryServer.create({

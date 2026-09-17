@@ -8,6 +8,7 @@ import { Product } from '../models/Product.js';
 import { CustomerLook } from '../models/CustomerLook.js';
 import { User } from '../models/User.js';
 import { connectDB, disconnectDB } from './db.js';
+import { validateNewPassword } from '../utils/passwordPolicy.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -49,23 +50,24 @@ export const seedInitialDataIfNeeded = async () => {
     console.log(`🌱 Empty database detected. Seeding initial catalog...`);
     await runSeed();
   } catch (error) {
-    console.error('Error during auto-seed check:', error);
+    console.error('Initial catalog seeding failed. Check database access and admin seed configuration.');
   }
 };
 
 export const runSeed = async () => {
   syncWorkspaceAssets();
 
-  // 1. Seed Admin User
-  await User.deleteMany({});
-  const adminUser = await User.create({
-    name: 'Ace Beauty Admin',
-    email: 'admin@acebeautybraids.com',
-    password: 'AdminPass123!',
-    role: 'admin',
-    phone: '+44 7700 900077',
-  });
-  console.log('👤 Admin user seeded: admin@acebeautybraids.com / AdminPass123!');
+  // 1. Provision an admin only when none exists. Never replace an existing
+  // password or delete accounts when reseeding the catalog.
+  if (!(await User.exists({ role: 'admin' }))) {
+    const email = process.env.ADMIN_SEED_EMAIL?.trim().toLowerCase();
+    const password = process.env.ADMIN_SEED_PASSWORD;
+    if (!email || validateNewPassword(password)) {
+      throw new Error('Set ADMIN_SEED_EMAIL and an ADMIN_SEED_PASSWORD meeting the password policy before creating the first admin.');
+    }
+    await User.create({ name: 'Ace Beauty Admin', email, password, role: 'admin' });
+    console.log('Admin account created.');
+  }
 
   // 2. Seed Categories
   await Category.deleteMany({});
@@ -562,7 +564,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       await disconnectDB();
       process.exit(0);
     } catch (err) {
-      console.error('Seed script error:', err);
+      console.error('Seed script failed. Check database access and admin seed configuration.');
       process.exit(1);
     }
   })();

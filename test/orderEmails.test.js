@@ -21,7 +21,7 @@ const fixture = () => ({
   },
   items: [{ product: '000000000000000000000002', name: 'Braided wig', qty: 2, price: 50, variant: { color: 'Black', length: '28 inch', capSize: 'Medium' } }],
   subtotal: 100, shippingFee: 5.99, total: 105.99, currency: 'GBP',
-  paymentStatus: 'awaiting_verification', orderStatus: 'pending',
+  paymentStatus: 'awaiting_verification', paymentMethod: 'bank_transfer', orderStatus: 'pending',
   trackingCode: 'ABB-UK-TEST12', carrier: 'Royal Mail', paymentRef: 'ABB-PAY-TEST',
   notes: 'INTERNAL ADMIN NOTE',
 });

@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { adminPaymentNotificationSchema } from './AdminPaymentNotification.js';
 
 const orderItemSchema = new mongoose.Schema({
   product: {
@@ -67,6 +68,14 @@ const orderSchema = new mongoose.Schema({
     type: String,
     default: 'bank_transfer',
   },
+  stripeCheckoutSessionId: { type: String },
+  stripeExpectedAmountMinor: { type: Number, min: 0, validate: Number.isSafeInteger },
+  stripeCurrency: { type: String, enum: ['gbp', 'eur'] },
+  stripeLivemode: { type: Boolean },
+  stripePaymentIntentId: { type: String },
+  stripePaymentState: { type: String, enum: ['pending', 'processing', 'paid', 'failed', 'expired'] },
+  stripeLastEventId: { type: String },
+  adminPaymentNotification: { type: adminPaymentNotificationSchema, select: false },
   paymentRef: {
     type: String,
     required: true,
@@ -115,6 +124,11 @@ const orderSchema = new mongoose.Schema({
   }
 }, {
   timestamps: true,
+});
+
+orderSchema.index({ stripeCheckoutSessionId: 1 }, { unique: true, sparse: true });
+orderSchema.index({ 'adminPaymentNotification.createdAt': -1, _id: -1 }, {
+  partialFilterExpression: { 'adminPaymentNotification.createdAt': { $exists: true } },
 });
 
 export const Order = mongoose.model('Order', orderSchema);

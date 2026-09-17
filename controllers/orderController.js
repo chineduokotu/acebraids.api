@@ -142,11 +142,13 @@ export const getAdminOrders = async (req, res) => {
       Order.countDocuments(query),
       Order.aggregate([
         { $match: { paymentStatus: { $in: ['paid', 'mock_paid'] } } },
-        { $group: { _id: null, totalRevenue: { $sum: '$total' } } }
+        { $group: { _id: '$currency', totalRevenue: { $sum: '$total' } } }
       ])
     ]);
 
-    const totalRevenue = totalRevenueAgg[0]?.totalRevenue || 0;
+    const revenueByCurrency = Object.fromEntries(totalRevenueAgg.map((row) => [row._id || 'GBP', row.totalRevenue]));
+    // Keep the old field for existing clients, but never mix currencies in it.
+    const totalRevenue = revenueByCurrency.GBP || 0;
 
     res.json({
       orders,
@@ -154,6 +156,7 @@ export const getAdminOrders = async (req, res) => {
       pages: Math.ceil(total / Number(limit)),
       total,
       totalRevenue,
+      revenueByCurrency,
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -165,7 +168,7 @@ export const getAdminOrders = async (req, res) => {
 // @access  Private/Admin
 export const getPendingTransfers = async (req, res) => {
   try {
-    const orders = await Order.find({ paymentStatus: 'awaiting_verification' }).sort({
+    const orders = await Order.find({ paymentMethod: 'bank_transfer', paymentStatus: 'awaiting_verification' }).sort({
       paymentSubmittedAt: 1,
       createdAt: 1,
     });
@@ -185,6 +188,10 @@ export const approvePayment = async (req, res) => {
 
     if (!order) {
       return res.status(404).json({ message: 'Order not found' });
+    }
+
+    if (order.paymentMethod !== 'bank_transfer') {
+      return res.status(400).json({ message: 'Stripe payments are confirmed automatically and cannot be manually approved.' });
     }
 
     if (order.paymentStatus === 'paid') {
@@ -219,6 +226,10 @@ export const rejectPayment = async (req, res) => {
 
     if (!order) {
       return res.status(404).json({ message: 'Order not found' });
+    }
+
+    if (order.paymentMethod !== 'bank_transfer') {
+      return res.status(400).json({ message: 'Only bank transfers can be manually rejected.' });
     }
 
     if (order.paymentStatus !== 'awaiting_verification') {

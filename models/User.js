@@ -17,6 +17,14 @@ const userSchema = new mongoose.Schema({
   password: {
     type: String,
     required: true,
+    select: false,
+  },
+  authVersion: {
+    type: Number,
+    // Do not apply a writable default to hydrated legacy records: an unrelated
+    // save of an older document must never restore a revoked session version.
+    default: function () { return this.isNew ? 0 : undefined; },
+    min: 0,
   },
   phone: {
     type: String,
@@ -51,6 +59,7 @@ userSchema.pre('save', async function (next) {
 });
 
 userSchema.methods.matchPassword = async function (enteredPassword) {
+  if (typeof enteredPassword !== 'string' || !this.password) return false;
   return await bcrypt.compare(enteredPassword, this.password);
 };
 

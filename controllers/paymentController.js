@@ -1,5 +1,8 @@
 import { Order } from '../models/Order.js';
 import { sendOrderConfirmationEmail, sendPaymentPendingEmail } from '../services/emailService.js';
+import { getCheckoutOrigin, getStripe, stripeIsLive } from '../config/stripe.js';
+import { priceStripeOrder } from '../services/stripeOrderPricing.js';
+import { applyStripeCheckoutEvent } from '../services/stripeWebhook.js';
 
 const generateTrackingCode = () => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -46,6 +49,44 @@ const validateOrderDraft = (orderDraft) => {
   }
 
   return null;
+};
+
+export const buildStripeCheckoutSessionPayload = (orderDraft, clientBaseUrl = process.env.CLIENT_URL || 'http://localhost:5173') => {
+  const validationError = validateOrderDraft(orderDraft);
+
+  if (validationError) {
+    throw new Error(validationError);
+  }
+
+  const { total } = calculateOrderTotals(orderDraft);
+  const currency = String(orderDraft.currency || 'GBP').toLowerCase();
+  const normalizedBaseUrl = String(clientBaseUrl || 'http://localhost:5173').replace(/\/$/, '');
+  const description = orderDraft.items.map(item => `${item.name}${item.qty > 1 ? ` x${item.qty}` : ''}`).join(', ');
+
+  return {
+    // Card-only remains the default. Dynamic methods must be deliberately
+    // enabled; delayed methods are handled by the webhook state machine.
+    ...(process.env.STRIPE_DYNAMIC_PAYMENT_METHODS === 'true' ? {} : { payment_method_types: ['card'] }),
+    mode: 'payment',
+    customer_email: orderDraft.guestInfo?.email || undefined,
+    line_items: [{
+      price_data: {
+        currency,
+        unit_amount: Math.round(total * 100),
+        product_data: {
+          name: 'AceBeautyBraids order',
+          description: description.slice(0, 200),
+        },
+      },
+      quantity: 1,
+    }],
+    success_url: `${normalizedBaseUrl}/order-confirmation?checkout=success`,
+    cancel_url: `${normalizedBaseUrl}/checkout?payment=cancelled`,
+    metadata: {
+      customerEmail: orderDraft.guestInfo?.email || '',
+      customerName: `${orderDraft.guestInfo?.firstName || ''} ${orderDraft.guestInfo?.lastName || ''}`.trim(),
+    },
+  };
 };
 
 export const getBankDetails = async (req, res) => {
@@ -101,12 +142,116 @@ export const createBankTransferOrder = async (req, res) => {
   }
 };
 
+export const createStripeCheckoutSession = async (req, res) => {
+  try {
+    const stripe = getStripe();
+    if (!process.env.STRIPE_WEBHOOK_SECRET?.startsWith('whsec_')) {
+      return res.status(503).json({ message: 'Stripe checkout is temporarily unavailable.' });
+    }
+
+    const { orderDraft } = req.body;
+    const pricedOrder = await priceStripeOrder(orderDraft);
+    const clientBaseUrl = getCheckoutOrigin(req.get('Origin'));
+    const trackingCode = generateTrackingCode();
+    const paymentRef = createPaymentReference();
+
+    const order = new Order({
+      ...pricedOrder,
+      user: req.user?._id || undefined,
+      paymentStatus: 'pending',
+      paymentMethod: 'stripe',
+      stripeCurrency: pricedOrder.currency.toLowerCase(),
+      stripeLivemode: stripeIsLive(),
+      stripePaymentState: 'pending',
+      paymentRef,
+      orderStatus: 'pending',
+      trackingCode,
+      carrier: orderDraft.guestInfo.shippingAddress.country === 'Germany' ? 'DHL Express Germany' : 'Royal Mail 24 Tracked',
+      notes: typeof orderDraft.notes === 'string' ? orderDraft.notes.slice(0, 2000) : '',
+    });
+
+    const savedOrder = await order.save();
+    const sessionPayload = buildStripeCheckoutSessionPayload(pricedOrder, clientBaseUrl);
+    sessionPayload.client_reference_id = String(savedOrder._id);
+    sessionPayload.success_url = `${clientBaseUrl}/order-confirmation/${savedOrder._id}?checkout=success`;
+    sessionPayload.cancel_url = `${clientBaseUrl}/checkout?payment=cancelled`;
+    sessionPayload.metadata = {
+      ...sessionPayload.metadata,
+      orderId: String(savedOrder._id),
+    };
+
+    const session = await stripe.checkout.sessions.create({
+      ...sessionPayload,
+      billing_address_collection: 'required',
+      shipping_address_collection: {
+        allowed_countries: ['GB', 'DE'],
+      },
+      invoice_creation: {
+        enabled: false,
+      },
+      mode: 'payment',
+      allow_promotion_codes: false,
+    }, { idempotencyKey: `checkout-order-${savedOrder._id}` });
+
+    // Persist the provider linkage before releasing the hosted checkout URL.
+    savedOrder.stripeCheckoutSessionId = session.id;
+    await savedOrder.save();
+
+    sendOrderConfirmationEmail(savedOrder).catch(console.error);
+
+    res.status(201).json({
+      success: true,
+      order: savedOrder,
+      sessionId: session.id,
+      checkoutUrl: session.url,
+    });
+  } catch (error) {
+    res.status(error.status || 503).json({ message: error.status ? error.message : 'Unable to start Stripe checkout. Please try again.' });
+  }
+};
+
+export const handleStripeWebhook = async (req, res) => {
+  let event;
+  let stripe;
+  try {
+    stripe = getStripe();
+  } catch {
+    return res.status(503).json({ message: 'Stripe webhook is not configured.' });
+  }
+  const secret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!secret?.startsWith('whsec_')) return res.status(503).json({ message: 'Stripe webhook is not configured.' });
+  const signature = req.get('stripe-signature');
+  if (!signature || !Buffer.isBuffer(req.body)) return res.status(400).json({ message: 'Invalid Stripe signature or payload.' });
+  try {
+    event = stripe.webhooks.constructEvent(req.body, signature, secret);
+  } catch {
+    // SDK errors can contain request/signature details. Never echo or log them.
+    return res.status(400).json({ message: 'Invalid Stripe signature or payload.' });
+  }
+  try {
+    await applyStripeCheckoutEvent(event);
+    return res.json({ received: true });
+  } catch (error) {
+    // Only diagnostic event IDs and fixed codes are logged, never the payload,
+    // customer details, signing secret, API key, or SDK error objects.
+    console.warn('Stripe webhook processing incomplete', {
+      eventId: typeof event.id === 'string' ? event.id : undefined,
+      code: error.code && typeof error.code === 'string' && error.status ? error.code : 'PERSISTENCE_FAILURE',
+    });
+    return res.status(error.status || 500).json({ message: 'Stripe event could not be processed.' });
+  }
+};
+
 export const confirmBankTransfer = async (req, res) => {
   try {
     const order = await Order.findById(req.params.orderId);
 
     if (!order) {
       return res.status(404).json({ message: 'Order not found' });
+    }
+
+    if (order.paymentMethod !== 'bank_transfer') {
+      return res.status(400).json({ message: 'Only bank transfers can be reported for manual verification.' });
     }
 
     if (!['pending', 'awaiting_verification'].includes(order.paymentStatus)) {
