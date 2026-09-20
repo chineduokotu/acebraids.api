@@ -6,6 +6,7 @@ import {
   createProduct,
   updateProduct,
   deleteProduct,
+  updateProductStock,
 } from '../controllers/productController.js';
 import { protect, adminOnly } from '../middleware/auth.js';
 
@@ -17,6 +18,8 @@ router.route('/')
 
 router.route('/id/:id')
   .get(getProductById);
+
+router.patch('/:id/stock', protect, adminOnly, updateProductStock);
 
 router.route('/:slug')
   .get(getProductBySlug);

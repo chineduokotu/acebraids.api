@@ -5,6 +5,7 @@ import { getSmtpOptions } from '../config/email.js';
 import { renderOrderEmail } from '../services/orderEmailTemplates.js';
 import { sendPaymentApprovedEmail, sendOrderStatusUpdateEmail } from '../services/emailService.js';
 import { approvePayment, updateOrderStatus } from '../controllers/orderController.js';
+import mongoose from 'mongoose';
 import { Order } from '../models/Order.js';
 import { Product } from '../models/Product.js';
 
@@ -23,6 +24,7 @@ const fixture = () => ({
   subtotal: 100, shippingFee: 5.99, total: 105.99, currency: 'GBP',
   paymentStatus: 'awaiting_verification', paymentMethod: 'bank_transfer', orderStatus: 'pending',
   trackingCode: 'ABB-UK-TEST12', carrier: 'Royal Mail', paymentRef: 'ABB-PAY-TEST',
+  inventoryState: 'deducted', stockAllocations: [],
   notes: 'INTERNAL ADMIN NOTE',
 });
 
@@ -128,8 +130,16 @@ test('controller hooks and background SMTP isolation (no database or network)', 
   const transportFactory = t.mock.method(nodemailer, 'createTransport', () => ({
     sendMail: message => { messages.push(message); return send(message); },
   }));
-  t.mock.method(Order, 'findById', async () => currentOrder);
+  t.mock.method(Order, 'findById', () => ({
+    session: async () => currentOrder,
+    select: () => ({
+      session: async () => currentOrder,
+      then: (resolve, reject) => Promise.resolve(currentOrder).then(resolve, reject),
+    }),
+    then: (resolve, reject) => Promise.resolve(currentOrder).then(resolve, reject),
+  }));
   t.mock.method(Product, 'findById', async () => null);
+  t.mock.method(mongoose.connection, 'transaction', async (work) => work({}));
   const warnings = t.mock.method(console, 'warn', () => {});
   t.mock.method(console, 'info', () => {});
   const tick = () => new Promise(resolve => setImmediate(resolve));

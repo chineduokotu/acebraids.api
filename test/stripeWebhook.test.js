@@ -4,7 +4,7 @@ import { once } from 'node:events';
 import Stripe from 'stripe';
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
-import { MongoMemoryServer } from 'mongodb-memory-server';
+import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { Order } from '../models/Order.js';
 import { User } from '../models/User.js';
 
@@ -114,8 +114,8 @@ before(async () => {
   process.env.NODE_ENV = 'test';
   delete process.env.EMAIL_HOST_USER;
   delete process.env.EMAIL_HOST_PASSWORD;
-  // Never connect using MONGODB_URI or the app's database fallback.
-  database = await MongoMemoryServer.create({ instance: { dbName: `stripe_webhook_test_${process.pid}` } });
+  // Use MongoMemoryReplSet to support multi-document transactions in withInventoryTransaction
+  database = await MongoMemoryReplSet.create({ replSet: { count: 1 }, instanceOpts: [{ dbName: `stripe_webhook_test_${process.pid}` }] });
   await mongoose.connect(database.getUri());
   const { default: app } = await import('../app.js');
   await Promise.all(Object.values(mongoose.models).map(model => model.init()));

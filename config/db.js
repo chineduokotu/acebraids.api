@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { MongoMemoryServer } from 'mongodb-memory-server';
+import { MongoMemoryReplSet } from 'mongodb-memory-server';
 
 let mongoMemoryServer = null;
 
@@ -17,10 +17,8 @@ export const connectDB = async () => {
     if (process.env.NODE_ENV === 'production') throw error;
     console.warn(`⚠️ Local MongoDB connection failed (${error.message}). Falling back to MongoMemoryServer...`);
     try {
-      mongoMemoryServer = await MongoMemoryServer.create({
-        instance: {
-          dbName: 'acebeautybraids'
-        }
+      mongoMemoryServer = await MongoMemoryReplSet.create({
+        replSet: { count: 1, dbName: 'acebeautybraids', storageEngine: 'wiredTiger' },
       });
       const memoryUri = mongoMemoryServer.getUri();
       const conn = await mongoose.connect(memoryUri);

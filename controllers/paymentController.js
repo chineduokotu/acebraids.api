@@ -105,19 +105,15 @@ export const createBankTransferOrder = async (req, res) => {
       return res.status(400).json({ message: validationError });
     }
 
-    const { subtotal, shippingFee, total } = calculateOrderTotals(orderDraft);
-    const currency = orderDraft.currency || 'GBP';
+    // Both checkout methods validate current inventory and persist the exact
+    // catalogue variant, prices and quantities used by later fulfillment.
+    const pricedOrder = await priceStripeOrder(orderDraft);
     const trackingCode = generateTrackingCode();
     const paymentRef = createPaymentReference();
 
     const order = new Order({
       user: req.user?._id || undefined,
-      guestInfo: orderDraft.guestInfo,
-      items: orderDraft.items,
-      subtotal,
-      shippingFee,
-      total,
-      currency,
+      ...pricedOrder,
       paymentStatus: 'pending',
       paymentMethod: 'bank_transfer',
       paymentRef,
@@ -138,7 +134,7 @@ export const createBankTransferOrder = async (req, res) => {
       verificationWindowMinutes: getVerificationWindowMinutes(),
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(error.status || 500).json({ message: error.message });
   }
 };
 

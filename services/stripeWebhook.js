@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { Order } from '../models/Order.js';
 import { stripeIsLive } from '../config/stripe.js';
+import { deductOrderStock, withInventoryTransaction } from './inventoryService.js';
 
 export const STRIPE_CHECKOUT_EVENTS = new Set([
   'checkout.session.completed', 'checkout.session.async_payment_succeeded',
@@ -53,23 +54,38 @@ export const applyStripeCheckoutEvent = async (event) => {
       amount: order.total, amountMinor: session.amount_total, currency: order.currency.toUpperCase(),
       paymentStatus: 'paid', paymentMethod: 'stripe', readBy: [],
     };
-    const updated = await Order.findOneAndUpdate(
-      { ...filter, orderStatus: order.orderStatus, adminPaymentNotification: { $exists: false } },
-      { $set: {
-        paymentStatus: 'paid', stripePaymentState: 'paid', stripeLastEventId: event.id,
-        stripePaymentIntentId: typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id,
-        paymentVerifiedAt: now,
-        orderStatus: ['pending', 'cancelled'].includes(order.orderStatus) ? 'processing' : order.orderStatus,
-        adminPaymentNotification: notification,
-      } },
-      { new: true, runValidators: true }
-    );
-    if (!updated) {
-      // A concurrent fulfillment edit must not be mistaken for a duplicate:
-      // request a retry unless another webhook already committed this payment.
-      const committed = await Order.exists({ _id: order._id, paymentStatus: 'paid', 'adminPaymentNotification.createdAt': { $exists: true } });
-      if (!committed) throw rejectEvent(503, 'ORDER_CHANGED_RETRY');
-    }
+    const updated = await withInventoryTransaction(async (transaction) => {
+      const updated = await Order.findOneAndUpdate(
+        { ...filter, orderStatus: order.orderStatus, adminPaymentNotification: { $exists: false } },
+        { $set: {
+          paymentStatus: 'paid', stripePaymentState: 'paid', stripeLastEventId: event.id,
+          stripePaymentIntentId: typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id,
+          paymentVerifiedAt: now,
+          orderStatus: ['pending', 'cancelled'].includes(order.orderStatus) ? 'processing' : order.orderStatus,
+          adminPaymentNotification: notification,
+        } },
+        { new: true, runValidators: true, session: transaction }
+      );
+      if (!updated) {
+        // A concurrent fulfillment edit must not be mistaken for a duplicate:
+        // request a retry unless another webhook already committed this payment.
+        const committed = await Order.exists({ _id: order._id, paymentStatus: 'paid', 'adminPaymentNotification.createdAt': { $exists: true } }).session(transaction);
+        if (!committed) throw rejectEvent(503, 'ORDER_CHANGED_RETRY');
+        return false;
+      }
+      try {
+        await deductOrderStock(updated, { reason: 'customer_purchase', session: transaction });
+      } catch (stockError) {
+        // If stock was depleted between checkout creation and webhook arrival,
+        // preserve the payment write and flag for admin fulfillment/restock.
+        await Order.updateOne(
+          { _id: updated._id },
+          { $set: { inventoryState: 'unavailable', inventoryError: stockError.message } },
+          { session: transaction }
+        );
+      }
+      return true;
+    });
     return { updated: Boolean(updated) };
   }
   if (event.type === 'checkout.session.async_payment_succeeded') throw rejectEvent(400, 'PAYMENT_NOT_CONFIRMED');

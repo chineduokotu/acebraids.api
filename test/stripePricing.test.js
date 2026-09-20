@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import Stripe from 'stripe';
 import mongoose from 'mongoose';
-import { MongoMemoryServer } from 'mongodb-memory-server';
+import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { Product } from '../models/Product.js';
 import { Order } from '../models/Order.js';
 import { priceStripeOrder } from '../services/stripeOrderPricing.js';
@@ -34,7 +34,7 @@ before(async () => {
     captured = { payload, options };
     return { id: `cs_test_offline_${++sessionCount}`, url: 'https://checkout.stripe.com/test-fixture', livemode: false };
   });
-  database = await MongoMemoryServer.create({ instance: { dbName: `stripe_pricing_test_${process.pid}` } });
+  database = await MongoMemoryReplSet.create({ replSet: { count: 1 }, instanceOpts: [{ dbName: `stripe_pricing_test_${process.pid}` }] });
   await mongoose.connect(database.getUri());
   const { default: app } = await import('../app.js');
   await Promise.all([Product.init(), Order.init()]);

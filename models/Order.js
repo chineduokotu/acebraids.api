@@ -11,13 +11,14 @@ const orderItemSchema = new mongoose.Schema({
   slug: { type: String, default: '' },
   image: { type: String, default: '' },
   variant: {
+    _id: { type: mongoose.Schema.Types.ObjectId },
     label: { type: String, default: '' },
     color: { type: String, default: '' },
     length: { type: String, default: '' },
     capSize: { type: String, default: '' },
     sku: { type: String, default: '' },
   },
-  qty: { type: Number, required: true, min: 1 },
+  qty: { type: Number, required: true, min: 1, validate: Number.isSafeInteger },
   price: { type: Number, required: true, min: 0 },
 });
 
@@ -75,6 +76,16 @@ const orderSchema = new mongoose.Schema({
   stripePaymentIntentId: { type: String },
   stripePaymentState: { type: String, enum: ['pending', 'processing', 'paid', 'failed', 'expired'] },
   stripeLastEventId: { type: String },
+  inventoryState: { type: String, enum: ['none', 'deducted', 'restored', 'unavailable'], default: 'none' },
+  inventoryError: { type: String, default: '' },
+  stockAllocations: [{
+    _id: false,
+    product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
+    variantId: mongoose.Schema.Types.ObjectId,
+    variantLabel: String,
+    sku: String,
+    qty: { type: Number, required: true, min: 1, validate: Number.isSafeInteger },
+  }],
   adminPaymentNotification: { type: adminPaymentNotificationSchema, select: false },
   paymentRef: {
     type: String,

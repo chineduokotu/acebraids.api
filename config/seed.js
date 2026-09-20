@@ -9,6 +9,7 @@ import { CustomerLook } from '../models/CustomerLook.js';
 import { User } from '../models/User.js';
 import { connectDB, disconnectDB } from './db.js';
 import { validateNewPassword } from '../utils/passwordPolicy.js';
+import { createIslandTwistProductData, ensureIslandTwistProduct, ISLAND_TWIST_CATEGORY_SLUG } from './islandTwistProduct.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -44,6 +45,7 @@ export const seedInitialDataIfNeeded = async () => {
     syncWorkspaceAssets();
     const count = await Product.countDocuments();
     if (count > 0) {
+      await ensureIslandTwistProduct();
       console.log(`📦 Database already populated with ${count} products.`);
       return;
     }
@@ -509,6 +511,7 @@ export const runSeed = async () => {
     }
   ];
 
+  productsData.push(createIslandTwistProductData(catMap[ISLAND_TWIST_CATEGORY_SLUG]));
   const createdProducts = await Product.insertMany(productsData);
   console.log(`✨ Seeded ${createdProducts.length} luxury hair products.`);
 

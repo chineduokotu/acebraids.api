@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { Product } from '../models/Product.js';
+import { findMatchingVariant, validateItemsStock } from './inventoryService.js';
 
 const invalid = (message) => Object.assign(new Error(message), { status: 400 });
 const toMinor = (value) => Math.round(value * 100);
@@ -25,25 +25,15 @@ export const priceStripeOrder = async (draft) => {
       throw invalid('Each cart item needs a valid product and a quantity between 1 and 100.');
     }
   }
-  const products = await Product.find({ _id: { $in: draft.items.map((item) => item.product) } });
-  const catalogue = new Map(products.map((product) => [String(product._id), product]));
-  const quantities = new Map();
+  const { catalogue } = await validateItemsStock(draft.items);
   let subtotalGbpMinor = 0;
   const items = draft.items.map((item) => {
     const product = catalogue.get(item.product);
     if (!product || product.isSoldOut) throw invalid('A product in your cart is unavailable. Please review your bag.');
     let variant;
     if (product.variants.length) {
-      variant = product.variants.find((candidate) => {
-        if (item.variant?.sku && candidate.sku) return item.variant.sku === candidate.sku;
-        return ['color', 'length', 'capSize'].every((key) =>
-          (candidate[key] || 'Standard') === (item.variant?.[key] || 'Standard'));
-      });
+      variant = findMatchingVariant(product, item.variant, item.variantId);
       if (!variant) throw invalid('A selected product option is unavailable. Please review your bag.');
-      const quantityKey = `${product._id}:${variant._id}`;
-      const quantity = (quantities.get(quantityKey) || 0) + item.qty;
-      quantities.set(quantityKey, quantity);
-      if (quantity > variant.stock) throw invalid('There is not enough stock for a selected product option.');
     }
     const price = variant?.priceOverride ?? product.discountPrice ?? product.price;
     if (!Number.isFinite(price) || price < 0) throw invalid('A product price is unavailable.');
@@ -53,7 +43,7 @@ export const priceStripeOrder = async (draft) => {
     return {
       product: product._id, name: product.name, slug: product.slug,
       image: product.images[0]?.url || '',
-      variant: variant ? { label: variant.label, color: variant.color, length: variant.length, capSize: variant.capSize, sku: variant.sku } : {},
+      variant: variant ? { _id: variant._id, label: variant.label, color: variant.color, length: variant.length, capSize: variant.capSize, sku: variant.sku } : {},
       qty: item.qty, price: unitMinor / 100,
     };
   });

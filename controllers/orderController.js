@@ -1,33 +1,13 @@
 import { Order } from '../models/Order.js';
-import { Product } from '../models/Product.js';
+import { deductOrderStock, restoreOrderStock, withInventoryTransaction } from '../services/inventoryService.js';
+
+const invalid = (message, status = 400) => Object.assign(new Error(message), { status });
 import {
   sendOrderStatusUpdateEmail,
   sendPaymentApprovedEmail,
   sendPaymentRejectedEmail,
 } from '../services/emailService.js';
 
-const decrementApprovedOrderStock = async (order) => {
-  for (const item of order.items || []) {
-    if (!item.product) continue;
-
-    try {
-      const prod = await Product.findById(item.product);
-      if (!prod?.variants?.length) continue;
-
-      const vIndex = prod.variants.findIndex(v =>
-        (!item.variant?.color || v.color === item.variant.color) &&
-        (!item.variant?.length || v.length === item.variant.length)
-      );
-
-      if (vIndex !== -1 && prod.variants[vIndex].stock > 0) {
-        prod.variants[vIndex].stock = Math.max(0, prod.variants[vIndex].stock - item.qty);
-        await prod.save();
-      }
-    } catch (stockErr) {
-      console.warn('Stock update skipped:', stockErr.message);
-    }
-  }
-};
 
 // @desc    Get order by ID
 // @route   GET /api/orders/:id
@@ -184,36 +164,25 @@ export const getPendingTransfers = async (req, res) => {
 // @access  Private/Admin
 export const approvePayment = async (req, res) => {
   try {
-    const order = await Order.findById(req.params.id);
-
-    if (!order) {
-      return res.status(404).json({ message: 'Order not found' });
-    }
-
-    if (order.paymentMethod !== 'bank_transfer') {
-      return res.status(400).json({ message: 'Stripe payments are confirmed automatically and cannot be manually approved.' });
-    }
-
-    if (order.paymentStatus === 'paid') {
-      return res.json(order);
-    }
-
-    if (order.paymentStatus !== 'awaiting_verification') {
-      return res.status(400).json({ message: 'Only awaiting verification payments can be approved' });
-    }
-
-    order.paymentStatus = 'paid';
-    order.orderStatus = 'processing';
-    order.paymentVerifiedAt = new Date();
-    order.paymentDecisionBy = req.user?._id;
-
-    const updatedOrder = await order.save();
-    await decrementApprovedOrderStock(updatedOrder);
-    sendPaymentApprovedEmail(updatedOrder).catch(console.error);
-
-    res.json(updatedOrder);
+    const { order, changed } = await withInventoryTransaction(async (session) => {
+      const order = await Order.findById(req.params.id).session(session);
+      if (!order) throw invalid('Order not found', 404);
+      if (order.paymentMethod !== 'bank_transfer') throw invalid('Stripe payments are confirmed automatically and cannot be manually approved.');
+      if (order.paymentStatus === 'paid') return { order, changed: false };
+      if (order.orderStatus === 'cancelled') throw invalid('Cancelled orders cannot be approved.', 409);
+      if (order.paymentStatus !== 'awaiting_verification') throw invalid('Only awaiting verification payments can be approved');
+      await deductOrderStock(order, { performedBy: req.user?._id, session });
+      order.paymentStatus = 'paid';
+      order.orderStatus = 'processing';
+      order.paymentVerifiedAt = new Date();
+      order.paymentDecisionBy = req.user?._id;
+      await order.save({ session });
+      return { order, changed: true };
+    });
+    if (changed) sendPaymentApprovedEmail(order).catch(console.error);
+    res.json(order);
   } catch (error) {
-    res.status(400).json({ message: error.message });
+    res.status(error.status || 400).json({ message: error.message });
   }
 };
 
@@ -222,32 +191,22 @@ export const approvePayment = async (req, res) => {
 // @access  Private/Admin
 export const rejectPayment = async (req, res) => {
   try {
-    const order = await Order.findById(req.params.id);
-
-    if (!order) {
-      return res.status(404).json({ message: 'Order not found' });
-    }
-
-    if (order.paymentMethod !== 'bank_transfer') {
-      return res.status(400).json({ message: 'Only bank transfers can be manually rejected.' });
-    }
-
-    if (order.paymentStatus !== 'awaiting_verification') {
-      return res.status(400).json({ message: 'Only awaiting verification payments can be rejected' });
-    }
-
-    order.paymentStatus = 'rejected';
-    order.orderStatus = 'cancelled';
-    order.paymentRejectedAt = new Date();
-    order.paymentDecisionBy = req.user?._id;
-    order.paymentRejectionReason = req.body?.reason || 'Payment could not be verified. Please contact support.';
-
-    const updatedOrder = await order.save();
-    sendPaymentRejectedEmail(updatedOrder).catch(console.error);
-
-    res.json(updatedOrder);
+    const order = await withInventoryTransaction(async (session) => {
+      const order = await Order.findById(req.params.id).session(session);
+      if (!order) throw invalid('Order not found', 404);
+      if (order.paymentMethod !== 'bank_transfer') throw invalid('Only bank transfers can be manually rejected.');
+      if (order.paymentStatus !== 'awaiting_verification') throw invalid('Only awaiting verification payments can be rejected');
+      order.paymentStatus = 'rejected';
+      order.orderStatus = 'cancelled';
+      order.paymentRejectedAt = new Date();
+      order.paymentDecisionBy = req.user?._id;
+      order.paymentRejectionReason = req.body?.reason || 'Payment could not be verified. Please contact support.';
+      return order.save({ session });
+    });
+    sendPaymentRejectedEmail(order).catch(console.error);
+    res.json(order);
   } catch (error) {
-    res.status(400).json({ message: error.message });
+    res.status(error.status || 400).json({ message: error.message });
   }
 };
 
@@ -256,28 +215,29 @@ export const rejectPayment = async (req, res) => {
 // @access  Private/Admin
 export const updateOrderStatus = async (req, res) => {
   try {
-    const order = await Order.findById(req.params.id);
-    if (!order) {
-      return res.status(404).json({ message: 'Order not found' });
-    }
-
-    const { orderStatus, carrier, trackingCode, notes } = req.body;
-    const previousOrderStatus = order.orderStatus;
-
-    if (orderStatus) order.orderStatus = orderStatus;
-    if (carrier) order.carrier = carrier;
-    if (trackingCode) order.trackingCode = trackingCode;
-    if (notes !== undefined) order.notes = notes;
-
-    const updatedOrder = await order.save();
-
-    // Only notify on entry into shipped, after the database save succeeds.
-    if (previousOrderStatus !== 'shipped' && updatedOrder.orderStatus === 'shipped') {
-      sendOrderStatusUpdateEmail(updatedOrder).catch(console.error);
-    }
-
-    res.json(updatedOrder);
+    const { order, previousOrderStatus } = await withInventoryTransaction(async (session) => {
+      const order = await Order.findById(req.params.id).session(session);
+      if (!order) throw invalid('Order not found', 404);
+      const { orderStatus, carrier, trackingCode, notes } = req.body;
+      const previousOrderStatus = order.orderStatus;
+      if (orderStatus && !['pending', 'processing', 'shipped', 'delivered', 'cancelled'].includes(orderStatus)) throw invalid('Invalid order status.');
+      if (previousOrderStatus === 'cancelled' && orderStatus && orderStatus !== 'cancelled') throw invalid('Cancelled orders cannot be reopened. Create a new order.', 409);
+      if (orderStatus === 'cancelled') {
+        await restoreOrderStock(order, { performedBy: req.user?._id, session });
+      } else if (['processing', 'shipped', 'delivered'].includes(orderStatus) && order.inventoryState === 'unavailable') {
+        // An admin can retry fulfillment after restocking a paid Stripe order.
+        await deductOrderStock(order, { performedBy: req.user?._id, session });
+      }
+      if (orderStatus) order.orderStatus = orderStatus;
+      if (carrier) order.carrier = carrier;
+      if (trackingCode) order.trackingCode = trackingCode;
+      if (notes !== undefined) order.notes = notes;
+      await order.save({ session });
+      return { order, previousOrderStatus };
+    });
+    if (previousOrderStatus !== 'shipped' && order.orderStatus === 'shipped') sendOrderStatusUpdateEmail(order).catch(console.error);
+    res.json(order);
   } catch (error) {
-    res.status(400).json({ message: error.message });
+    res.status(error.status || 400).json({ message: error.message });
   }
 };

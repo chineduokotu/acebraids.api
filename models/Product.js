@@ -1,11 +1,22 @@
 import mongoose from 'mongoose';
 
+const inventoryQuantity = (defaultValue) => ({
+  type: Number,
+  default: defaultValue,
+  min: 0,
+  validate: {
+    validator: Number.isSafeInteger,
+    message: '{PATH} must be a non-negative whole number.',
+  },
+});
+
 const variantSchema = new mongoose.Schema({
   label: { type: String, default: '' },
   color: { type: String, default: 'Natural Black (#1B)' },
   length: { type: String, default: '' },
   capSize: { type: String, default: 'Medium (Average)' },
-  stock: { type: Number, default: 20 },
+  stock: inventoryQuantity(0),
+  lowStockThreshold: inventoryQuantity(5),
   sku: { type: String, default: '' },
   priceOverride: { type: Number },
 });
@@ -72,6 +83,8 @@ const productSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  stock: inventoryQuantity(0),
+  lowStockThreshold: inventoryQuantity(5),
   isSoldOut: {
     type: Boolean,
     default: false,
@@ -86,6 +99,23 @@ const productSchema = new mongoose.Schema({
   }
 }, {
   timestamps: true,
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true },
+});
+
+productSchema.virtual('totalStock').get(function () {
+  if (this.variants && this.variants.length > 0) {
+    return this.variants.reduce((acc, v) => acc + (Number.isFinite(v.stock) ? v.stock : 0), 0);
+  }
+  return Number.isFinite(this.stock) ? this.stock : 0;
+});
+
+productSchema.virtual('stockStatus').get(function () {
+  const total = this.totalStock;
+  const threshold = Number.isFinite(this.lowStockThreshold) ? this.lowStockThreshold : 5;
+  if (this.isSoldOut || total === 0) return 'out_of_stock';
+  if (total <= threshold) return 'low_stock';
+  return 'in_stock';
 });
 
 export const Product = mongoose.model('Product', productSchema);
