@@ -48,8 +48,8 @@ export const priceStripeOrder = async (draft) => {
     };
   });
   const subtotalMinor = items.reduce((sum, item) => sum + toMinor(item.price) * item.qty, 0);
-  const shippingGbpMinor = address.country === 'Germany' ? 899 : subtotalGbpMinor >= 8000 ? 0 : 599;
-  const shippingMinor = currency === 'EUR' ? Math.round(shippingGbpMinor * 1.18) : shippingGbpMinor;
+  const shippingGbpMinor = 0; // Free shipping on all orders
+  const shippingMinor = 0;
   const amountMinor = subtotalMinor + shippingMinor;
   if (!Number.isSafeInteger(amountMinor) || amountMinor < 50 || amountMinor > 99_999_999) throw invalid('The order total is outside the supported payment range.');
   return {
