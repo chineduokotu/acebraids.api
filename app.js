@@ -4,6 +4,7 @@ import cookieParser from 'cookie-parser';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { logger } from './utils/logger.js';
 
 import productRoutes from './routes/productRoutes.js';
 import categoryRoutes from './routes/categoryRoutes.js';
@@ -18,11 +19,47 @@ import { notFound, errorHandler } from './middleware/errorHandler.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// ---------------------------------------------------------------------------
+// Secrets verification — crash-fast in production if required vars are absent.
+// ---------------------------------------------------------------------------
+export const verifySecrets = () => {
+  const REQUIRED = ['MONGODB_URI', 'JWT_SECRET', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'CLIENT_URL'];
+  const missing = REQUIRED.filter((key) => !process.env[key]?.trim());
+  if (missing.length) {
+    const msg = `Missing required environment variables: ${missing.join(', ')}`;
+    // Always fatal — whether in production or dev, running without secrets is wrong.
+    logger.error(msg);
+    throw new Error(msg);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// CORS — allowlist built dynamically from CLIENT_URL (comma-separated).
+// ---------------------------------------------------------------------------
+const getCorsAllowlist = () => {
+  const raw = process.env.CLIENT_URL || '';
+  return raw.split(',').map((u) => {
+    try {
+      return new URL(u.trim()).origin;
+    } catch {
+      return u.trim();
+    }
+  }).filter(Boolean);
+};
+
 const app = express();
 
-// Allow all origins (development, production, Vercel, Netlify, custom domains)
 app.use(cors({
-  origin: true,
+  origin: (origin, callback) => {
+    // Allow server-to-server requests (no origin header)
+    if (!origin) return callback(null, true);
+    const allowlist = getCorsAllowlist();
+    if (allowlist.includes(origin)) {
+      return callback(null, true);
+    }
+    // Disallow cross-origin responses for unauthorized origins
+    callback(null, false);
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Stripe-Signature'],

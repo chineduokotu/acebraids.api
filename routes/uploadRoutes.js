@@ -1,6 +1,6 @@
 import express from 'express';
 import { uploadMedia } from '../controllers/uploadController.js';
-import { upload } from '../middleware/upload.js';
+import { upload, verifyUploadedFiles } from '../middleware/upload.js';
 import { protect, adminOnly } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -24,6 +24,7 @@ router.post(
     else if (req.files?.files) req.files = req.files.files;
     next();
   },
+  verifyUploadedFiles,
   uploadMedia
 );
 

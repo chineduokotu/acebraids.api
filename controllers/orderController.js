@@ -1,5 +1,6 @@
 import { Order } from '../models/Order.js';
 import { deductOrderStock, restoreOrderStock, withInventoryTransaction } from '../services/inventoryService.js';
+import { logger } from '../utils/logger.js';
 
 const invalid = (message, status = 400) => Object.assign(new Error(message), { status });
 import {
@@ -239,5 +240,46 @@ export const updateOrderStatus = async (req, res) => {
     res.json(order);
   } catch (error) {
     res.status(error.status || 400).json({ message: error.message });
+  }
+};
+
+// @desc    Delete order and restore inventory if deducted
+// @route   DELETE /api/orders/:id
+// @access  Private/Admin
+export const deleteOrder = async (req, res) => {
+  try {
+    const result = await withInventoryTransaction(async (session) => {
+      const order = await Order.findById(req.params.id).session(session);
+      if (!order) throw invalid('Order not found', 404);
+
+      let restoredCount = 0;
+      if (order.inventoryState === 'deducted') {
+        const restoreResult = await restoreOrderStock(order, {
+          reason: 'order_deletion',
+          performedBy: req.user?._id,
+          session,
+        });
+        restoredCount = restoreResult.restoredCount || 0;
+      }
+
+      await Order.deleteOne({ _id: order._id }).session(session);
+      return { orderId: order._id, trackingCode: order.trackingCode, restoredCount };
+    });
+
+    logger.info('Order deleted by admin', {
+      orderId: String(result.orderId),
+      trackingCode: result.trackingCode,
+      adminId: String(req.user?._id),
+      restoredCount: result.restoredCount,
+    });
+
+    res.json({
+      success: true,
+      message: 'Order permanently deleted.',
+      orderId: result.orderId,
+      restoredCount: result.restoredCount,
+    });
+  } catch (error) {
+    res.status(error.status || 500).json({ message: error.message });
   }
 };

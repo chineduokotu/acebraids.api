@@ -8,6 +8,7 @@ import {
   updateOrderStatus,
   approvePayment,
   rejectPayment,
+  deleteOrder,
 } from '../controllers/orderController.js';
 import { protect, adminOnly } from '../middleware/auth.js';
 
@@ -32,7 +33,8 @@ router.route('/:id/payment/reject')
   .put(protect, adminOnly, rejectPayment);
 
 router.route('/:id')
-  .get(getOrderById);
+  .get(getOrderById)
+  .delete(protect, adminOnly, deleteOrder);
 
 router.route('/:id/status')
   .put(protect, adminOnly, updateOrderStatus);

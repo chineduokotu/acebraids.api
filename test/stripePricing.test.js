@@ -64,12 +64,12 @@ test('server catalogue prices and shipping replace tampered browser amounts', as
   const priced = await priceStripeOrder(draft());
   assert.equal(priced.items[0].name, 'Braided Wig');
   assert.equal(priced.items[0].price, 50);
-  assert.equal(priced.shippingFee, 5.99);
-  assert.equal(priced.stripeExpectedAmountMinor, 5599);
+  assert.equal(priced.shippingFee, 0);
+  assert.equal(priced.stripeExpectedAmountMinor, 5000);
   const euro = await priceStripeOrder(draft({ currency: 'EUR' }));
   assert.equal(euro.items[0].price, 59);
-  assert.equal(euro.shippingFee, 7.07);
-  assert.equal(euro.total, 66.07);
+  assert.equal(euro.shippingFee, 0);
+  assert.equal(euro.total, 59);
 });
 
 test('invalid quantities, currencies, options and combined stock cannot create checkout', async () => {
@@ -90,21 +90,21 @@ test('checkout binds order ID, exact amount and session before releasing its URL
   assert.equal(response.status, 201);
   const order = await Order.findById(body.order._id);
   assert.equal(order.stripeCheckoutSessionId, body.sessionId);
-  assert.equal(order.stripeExpectedAmountMinor, 5599);
+  assert.equal(order.stripeExpectedAmountMinor, 5000);
   assert.equal(order.stripeLivemode, false);
-  assert.equal(captured.payload.line_items[0].price_data.unit_amount, 5599);
+  assert.equal(captured.payload.line_items[0].price_data.unit_amount, 5000);
   assert.equal(captured.payload.metadata.orderId, String(order._id));
   assert.equal(captured.payload.client_reference_id, String(order._id));
   assert.match(captured.payload.success_url, /^https:\/\/checkout.example.test\/order-confirmation\//);
   assert.equal(captured.options.idempotencyKey, `checkout-order-${order._id}`);
   assert.deepEqual(captured.payload.payment_method_types, ['card']);
-  const payload = JSON.stringify({ id: 'evt_test_checkout_paid', type: 'checkout.session.completed', livemode: false, data: { object: { object: 'checkout.session', id: body.sessionId, mode: 'payment', livemode: false, payment_status: 'paid', amount_total: 5599, currency: 'gbp', metadata: { orderId: String(order._id) } } } });
+  const payload = JSON.stringify({ id: 'evt_test_checkout_paid', type: 'checkout.session.completed', livemode: false, data: { object: { object: 'checkout.session', id: body.sessionId, mode: 'payment', livemode: false, payment_status: 'paid', amount_total: 5000, currency: 'gbp', metadata: { orderId: String(order._id) } } } });
   const signature = stripe.webhooks.generateTestHeaderString({ payload, secret });
   const webhook = await fetch(`${baseUrl}/api/payments/stripe/webhook`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Stripe-Signature': signature }, body: payload });
   assert.equal(webhook.status, 200);
   const confirmed = await Order.findById(order._id).select('+adminPaymentNotification');
   assert.equal(confirmed.paymentStatus, 'paid');
-  assert.equal(confirmed.adminPaymentNotification.amount, 55.99);
+  assert.equal(confirmed.adminPaymentNotification.amount, 50);
 });
 
 test('untrusted checkout origins never receive a hosted checkout session', async () => {

@@ -31,6 +31,10 @@ export const getSmtpOptions = (env = process.env) => {
   };
 };
 
+export const resetEmailTransport = () => {
+  transporter = null;
+};
+
 // Lazy initialization ensures dotenv has loaded before credentials are read.
 export const getEmailTransport = () => {
   if (!transporter) transporter = nodemailer.createTransport(getSmtpOptions());

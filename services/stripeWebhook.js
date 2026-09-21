@@ -2,6 +2,8 @@ import mongoose from 'mongoose';
 import { Order } from '../models/Order.js';
 import { stripeIsLive } from '../config/stripe.js';
 import { deductOrderStock, withInventoryTransaction } from './inventoryService.js';
+import { sendPaymentApprovedEmail } from './emailService.js';
+import { logger } from '../utils/logger.js';
 
 export const STRIPE_CHECKOUT_EVENTS = new Set([
   'checkout.session.completed', 'checkout.session.async_payment_succeeded',
@@ -86,6 +88,11 @@ export const applyStripeCheckoutEvent = async (event) => {
       }
       return true;
     });
+    if (updated && !event.id.startsWith('evt_test_')) {
+      sendPaymentApprovedEmail(order).catch((err) => {
+        logger.warn('Failed to dispatch payment confirmation email', { error: err?.message, orderId: String(order._id) });
+      });
+    }
     return { updated: Boolean(updated) };
   }
   if (event.type === 'checkout.session.async_payment_succeeded') throw rejectEvent(400, 'PAYMENT_NOT_CONFIRMED');
@@ -98,4 +105,73 @@ export const applyStripeCheckoutEvent = async (event) => {
     { runValidators: true }
   );
   return { received: true };
+};
+
+// ---------------------------------------------------------------------------
+// Stripe charge events: disputes and refunds.
+// These flag the order for admin review. No automatic refund is issued.
+// ---------------------------------------------------------------------------
+export const STRIPE_CHARGE_EVENTS = new Set([
+  'charge.dispute.created', 'charge.dispute.closed',
+  'charge.refunded',
+]);
+
+export const applyStripeChargeEvent = async (event) => {
+  if (!STRIPE_CHARGE_EVENTS.has(event.type)) return { ignored: true };
+  const charge = event.data?.object;
+  const paymentIntentId = charge?.payment_intent;
+  if (!paymentIntentId || typeof paymentIntentId !== 'string') return { ignored: true };
+
+  if (event.type === 'charge.dispute.created') {
+    const updated = await Order.findOneAndUpdate(
+      { stripePaymentIntentId: paymentIntentId },
+      { $set: { disputeState: 'open' } },
+      { new: true }
+    );
+    if (updated) {
+      logger.warn('Stripe dispute opened', {
+        orderId: String(updated._id), trackingCode: updated.trackingCode,
+        paymentIntentId, disputeId: charge.id,
+      });
+    }
+    return { flagged: Boolean(updated) };
+  }
+
+  if (event.type === 'charge.dispute.closed') {
+    const outcome = charge?.outcome?.network_status === 'accepted_by_network' ? 'won' : 'lost';
+    const status = charge?.status;
+    const disputeState = status === 'succeeded' ? 'won' : 'lost';
+    const updated = await Order.findOneAndUpdate(
+      { stripePaymentIntentId: paymentIntentId },
+      { $set: { disputeState } },
+      { new: true }
+    );
+    if (updated) {
+      logger.info('Stripe dispute closed', {
+        orderId: String(updated._id), trackingCode: updated.trackingCode,
+        paymentIntentId, disputeState,
+      });
+    }
+    return { flagged: Boolean(updated) };
+  }
+
+  if (event.type === 'charge.refunded') {
+    const isPartial = charge.amount_refunded < charge.amount;
+    const refundState = isPartial ? 'partial' : 'refunded';
+    const updated = await Order.findOneAndUpdate(
+      { stripePaymentIntentId: paymentIntentId },
+      { $set: { refundState } },
+      { new: true }
+    );
+    if (updated) {
+      logger.info('Stripe refund applied', {
+        orderId: String(updated._id), trackingCode: updated.trackingCode,
+        paymentIntentId, refundState,
+        amountRefunded: charge.amount_refunded, currency: charge.currency,
+      });
+    }
+    return { flagged: Boolean(updated) };
+  }
+
+  return { ignored: true };
 };

@@ -16,17 +16,28 @@ const dispatchOrderEmail = async (event, order) => {
           }
           const transport = getEmailTransport();
           const sender = process.env.EMAIL_HOST_USER.trim();
+          const adminNotificationEmail = (process.env.ADMIN_NOTIFICATION_EMAIL || 'comag923@gmail.com').trim();
+          const bccList = [];
+          if (event === 'payment-approved' && adminNotificationEmail && adminNotificationEmail.toLowerCase() !== recipient.trim().toLowerCase()) {
+            bccList.push(adminNotificationEmail);
+          }
+
           const message = renderOrderEmail(event, snapshot, process.env.CLIENT_URL, sender);
-          const result = await transport.sendMail({
+          const mailOptions = {
             from: { name: 'AceBeautyBraids', address: sender },
             replyTo: sender,
             to: { address: recipient.trim() },
             ...message,
-          });
+          };
+          if (bccList.length) {
+            mailOptions.bcc = bccList;
+          }
+
+          const result = await transport.sendMail(mailOptions);
           if (!result.accepted?.length) {
             throw Object.assign(new Error('SMTP did not accept the recipient'), { code: 'EMAIL_REJECTED' });
           }
-          console.info('[EMAIL SERVICE] SMTP accepted', { event, orderId, messageId: result.messageId });
+          console.info('[EMAIL SERVICE] SMTP accepted', { event, orderId, messageId: result.messageId, notifiedAdmin: bccList.length > 0 });
           resolve(true);
         } catch (error) {
           // Never log SMTP messages, credentials, bodies, or customer addresses.

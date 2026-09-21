@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import nodemailer from 'nodemailer';
-import { getSmtpOptions } from '../config/email.js';
+import { getSmtpOptions, resetEmailTransport } from '../config/email.js';
 import { renderOrderEmail } from '../services/orderEmailTemplates.js';
 import { sendPaymentApprovedEmail, sendOrderStatusUpdateEmail } from '../services/emailService.js';
 import { approvePayment, updateOrderStatus } from '../controllers/orderController.js';
@@ -118,7 +118,9 @@ test('real Nodemailer produces a valid multipart receipt with one sender and mat
 test('controller hooks and background SMTP isolation (no database or network)', async t => {
   const previousEnv = Object.fromEntries(Object.keys(emailEnv).map(key => [key, process.env[key]]));
   Object.assign(process.env, emailEnv);
+  resetEmailTransport();
   t.after(() => {
+    resetEmailTransport();
     for (const [key, value] of Object.entries(previousEnv)) {
       if (value === undefined) delete process.env[key]; else process.env[key] = value;
     }

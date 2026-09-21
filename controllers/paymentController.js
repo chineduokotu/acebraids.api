@@ -2,7 +2,8 @@ import { Order } from '../models/Order.js';
 import { sendOrderConfirmationEmail, sendPaymentPendingEmail } from '../services/emailService.js';
 import { getCheckoutOrigin, getStripe, stripeIsLive } from '../config/stripe.js';
 import { priceStripeOrder } from '../services/stripeOrderPricing.js';
-import { applyStripeCheckoutEvent } from '../services/stripeWebhook.js';
+import { applyStripeCheckoutEvent, STRIPE_CHECKOUT_EVENTS, applyStripeChargeEvent, STRIPE_CHARGE_EVENTS } from '../services/stripeWebhook.js';
+import { logger } from '../utils/logger.js';
 
 const generateTrackingCode = () => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -225,12 +226,14 @@ export const handleStripeWebhook = async (req, res) => {
     return res.status(400).json({ message: 'Invalid Stripe signature or payload.' });
   }
   try {
-    await applyStripeCheckoutEvent(event);
+    if (STRIPE_CHECKOUT_EVENTS.has(event.type)) {
+      await applyStripeCheckoutEvent(event);
+    } else if (STRIPE_CHARGE_EVENTS.has(event.type)) {
+      await applyStripeChargeEvent(event);
+    }
     return res.json({ received: true });
   } catch (error) {
-    // Only diagnostic event IDs and fixed codes are logged, never the payload,
-    // customer details, signing secret, API key, or SDK error objects.
-    console.warn('Stripe webhook processing incomplete', {
+    logger.warn('Stripe webhook processing incomplete', {
       eventId: typeof event.id === 'string' ? event.id : undefined,
       code: error.code && typeof error.code === 'string' && error.status ? error.code : 'PERSISTENCE_FAILURE',
     });

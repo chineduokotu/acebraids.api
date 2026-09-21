@@ -118,4 +118,11 @@ productSchema.virtual('stockStatus').get(function () {
   return 'in_stock';
 });
 
+// Homepage featured / new-arrival queries.
+productSchema.index({ isFeatured: 1 });
+productSchema.index({ isNewArrival: 1 });
+// Shop category page: filter by category + availability.
+productSchema.index({ category: 1, isSoldOut: 1 });
+
 export const Product = mongoose.model('Product', productSchema);
+

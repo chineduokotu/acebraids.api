@@ -132,7 +132,18 @@ const orderSchema = new mongoose.Schema({
   notes: {
     type: String,
     default: '',
-  }
+  },
+  // Stripe dispute/refund tracking — set by webhook handlers.
+  disputeState: {
+    type: String,
+    enum: ['none', 'open', 'won', 'lost'],
+    default: 'none',
+  },
+  refundState: {
+    type: String,
+    enum: ['none', 'refunded', 'partial'],
+    default: 'none',
+  },
 }, {
   timestamps: true,
 });
@@ -141,5 +152,10 @@ orderSchema.index({ stripeCheckoutSessionId: 1 }, { unique: true, sparse: true }
 orderSchema.index({ 'adminPaymentNotification.createdAt': -1, _id: -1 }, {
   partialFilterExpression: { 'adminPaymentNotification.createdAt': { $exists: true } },
 });
+// Admin order list: filter by status + sort by date.
+orderSchema.index({ paymentStatus: 1, createdAt: -1 });
+orderSchema.index({ orderStatus: 1, createdAt: -1 });
+// Customer lookup and order tracking.
+orderSchema.index({ 'guestInfo.email': 1 });
 
 export const Order = mongoose.model('Order', orderSchema);
