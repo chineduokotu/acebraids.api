@@ -45,9 +45,27 @@ export const validatePasswordChangeRequest = (req, res, next) => {
   const origin = req.get('Origin');
   if (origin) {
     try {
-      const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:5173')
+      const configuredOrigins = (process.env.CLIENT_URL || 'http://localhost:5173')
         .split(',')
-        .map((configuredOrigin) => new URL(configuredOrigin.trim()).origin);
+        .map((configuredOrigin) => {
+          try {
+            return new URL(configuredOrigin.trim()).origin;
+          } catch {
+            return null;
+          }
+        }).filter(Boolean);
+      const officialOrigins = [
+        'https://acebraids.co.uk',
+        'https://www.acebraids.co.uk',
+        'https://acebeautybraids.com',
+        'https://www.acebeautybraids.com',
+        'https://acebraids.vercel.app',
+        'https://acebraids.chineokotu.workers.dev',
+        'http://localhost:5173',
+        'http://localhost:3000',
+        'http://localhost:5000',
+      ];
+      const allowedOrigins = Array.from(new Set([...configuredOrigins, ...officialOrigins]));
       if (!allowedOrigins.includes(origin)) {
         return res.status(403).json({ message: 'This origin is not allowed to change passwords.' });
       }
