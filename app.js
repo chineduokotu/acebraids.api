@@ -34,31 +34,18 @@ export const verifySecrets = () => {
 };
 
 // ---------------------------------------------------------------------------
-// CORS — allowlist built dynamically from CLIENT_URL (comma-separated).
+// CORS — reflect any origin so the API works from any frontend URL.
+// withCredentials requires a specific origin (not *), so we echo it back.
 // ---------------------------------------------------------------------------
-const getCorsAllowlist = () => {
-  const raw = process.env.CLIENT_URL || '';
-  return raw.split(',').map((u) => {
-    try {
-      return new URL(u.trim()).origin;
-    } catch {
-      return u.trim();
-    }
-  }).filter(Boolean);
-};
 
 const app = express();
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow server-to-server requests (no origin header)
+    // Allow server-to-server / curl requests (no origin header)
     if (!origin) return callback(null, true);
-    const allowlist = getCorsAllowlist();
-    if (allowlist.includes(origin)) {
-      return callback(null, true);
-    }
-    // Disallow cross-origin responses for unauthorized origins
-    callback(null, false);
+    // Reflect the requesting origin — works with withCredentials: true
+    return callback(null, origin);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
