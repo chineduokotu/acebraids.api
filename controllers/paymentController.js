@@ -99,7 +99,22 @@ export const getBankDetails = async (req, res) => {
 
 export const createBankTransferOrder = async (req, res) => {
   try {
-    const { orderDraft } = req.body;
+    const { orderDraft, idempotencyKey } = req.body;
+
+    // Idempotency guard: if the client retries with the same key (network error,
+    // double-click, etc.) return the already-created order instead of a duplicate.
+    if (idempotencyKey && typeof idempotencyKey === 'string' && idempotencyKey.length <= 128) {
+      const existing = await Order.findOne({ clientIdempotencyKey: idempotencyKey });
+      if (existing) {
+        return res.json({
+          success: true,
+          order: existing,
+          bankDetails: getBankTransferDetails(),
+          verificationWindowMinutes: getVerificationWindowMinutes(),
+        });
+      }
+    }
+
     const validationError = validateOrderDraft(orderDraft);
 
     if (validationError) {
@@ -123,6 +138,7 @@ export const createBankTransferOrder = async (req, res) => {
       carrier: orderDraft.guestInfo.shippingAddress.country === 'Germany' ? 'DHL Express Germany' : 'Royal Mail 24 Tracked',
       notes: orderDraft.notes || '',
       customerPaymentNote: orderDraft.customerPaymentNote || '',
+      ...(idempotencyKey ? { clientIdempotencyKey: idempotencyKey } : {}),
     });
 
     const savedOrder = await order.save();
@@ -135,6 +151,11 @@ export const createBankTransferOrder = async (req, res) => {
       verificationWindowMinutes: getVerificationWindowMinutes(),
     });
   } catch (error) {
+    // A concurrent identical request already saved an order with this key.
+    if (error.code === 11000 && error.keyPattern?.clientIdempotencyKey) {
+      const existing = await Order.findOne({ clientIdempotencyKey: req.body?.idempotencyKey }).catch(() => null);
+      if (existing) return res.json({ success: true, order: existing, bankDetails: getBankTransferDetails(), verificationWindowMinutes: getVerificationWindowMinutes() });
+    }
     res.status(error.status || 500).json({ message: error.message });
   }
 };
@@ -146,9 +167,51 @@ export const createStripeCheckoutSession = async (req, res) => {
       return res.status(503).json({ message: 'Stripe checkout is temporarily unavailable.' });
     }
 
-    const { orderDraft } = req.body;
-    const pricedOrder = await priceStripeOrder(orderDraft);
+    const { orderDraft, idempotencyKey } = req.body;
+    // Resolve origin early so it can be used inside the idempotency guard.
     const clientBaseUrl = getCheckoutOrigin(req.get('Origin'));
+
+    // Idempotency guard: if the client retries with the same key, return the
+    // existing order/session rather than creating a new Order document.
+    if (idempotencyKey && typeof idempotencyKey === 'string' && idempotencyKey.length <= 128) {
+      const existing = await Order.findOne({ clientIdempotencyKey: idempotencyKey, paymentMethod: 'stripe' });
+      if (existing?.stripeCheckoutSessionId) {
+        try {
+          const existingSession = await stripe.checkout.sessions.retrieve(existing.stripeCheckoutSessionId);
+          if (existingSession.status === 'open') {
+            // Session still active — return the existing checkout URL.
+            return res.json({ success: true, order: existing, sessionId: existingSession.id, checkoutUrl: existingSession.url });
+          }
+          if (existingSession.status === 'complete') {
+            // Already paid — webhook will/has updated the order; do not redirect.
+            return res.json({ success: true, order: existing, sessionId: existingSession.id, checkoutUrl: null });
+          }
+          // Session expired — create a fresh Stripe session for the SAME order
+          // document (no new Order is created, avoiding duplicates).
+          const pricedRetry = await priceStripeOrder(orderDraft);
+          const retryPayload = buildStripeCheckoutSessionPayload(pricedRetry, clientBaseUrl);
+          retryPayload.client_reference_id = String(existing._id);
+          retryPayload.success_url = `${clientBaseUrl}/order-confirmation/${existing._id}?checkout=success`;
+          retryPayload.cancel_url = `${clientBaseUrl}/checkout?payment=cancelled`;
+          retryPayload.metadata = { ...retryPayload.metadata, orderId: String(existing._id) };
+          const freshSession = await stripe.checkout.sessions.create({
+            ...retryPayload,
+            billing_address_collection: 'required',
+            shipping_address_collection: { allowed_countries: ['GB', 'DE'] },
+            invoice_creation: { enabled: false },
+            mode: 'payment',
+            allow_promotion_codes: false,
+          }, { idempotencyKey: `checkout-order-${existing._id}-r${Date.now()}` });
+          existing.stripeCheckoutSessionId = freshSession.id;
+          await existing.save();
+          return res.json({ success: true, order: existing, sessionId: freshSession.id, checkoutUrl: freshSession.url });
+        } catch {
+          return res.status(503).json({ message: 'Unable to start Stripe checkout. Please try again.' });
+        }
+      }
+    }
+
+    const pricedOrder = await priceStripeOrder(orderDraft);
     const trackingCode = generateTrackingCode();
     const paymentRef = createPaymentReference();
 
@@ -165,6 +228,7 @@ export const createStripeCheckoutSession = async (req, res) => {
       trackingCode,
       carrier: orderDraft.guestInfo.shippingAddress.country === 'Germany' ? 'DHL Express Germany' : 'Royal Mail 24 Tracked',
       notes: typeof orderDraft.notes === 'string' ? orderDraft.notes.slice(0, 2000) : '',
+      ...(idempotencyKey ? { clientIdempotencyKey: idempotencyKey } : {}),
     });
 
     const savedOrder = await order.save();
@@ -203,6 +267,11 @@ export const createStripeCheckoutSession = async (req, res) => {
       checkoutUrl: session.url,
     });
   } catch (error) {
+    // A concurrent identical request already saved an order with this key.
+    if (error.code === 11000 && error.keyPattern?.clientIdempotencyKey) {
+      const existing = await Order.findOne({ clientIdempotencyKey: req.body?.idempotencyKey }).catch(() => null);
+      if (existing) return res.json({ success: true, order: existing, sessionId: existing.stripeCheckoutSessionId || null, checkoutUrl: null });
+    }
     res.status(error.status || 503).json({ message: error.status ? error.message : 'Unable to start Stripe checkout. Please try again.' });
   }
 };
@@ -258,9 +327,22 @@ export const confirmBankTransfer = async (req, res) => {
     }
 
     const windowMinutes = getVerificationWindowMinutes();
+
+    // Idempotency: if the customer taps "I've sent the money" more than once,
+    // return the current order state WITHOUT resetting the verification countdown.
+    // Only update the payment note if a new one was provided.
+    if (order.paymentStatus === 'awaiting_verification') {
+      if (req.body?.customerPaymentNote !== undefined) {
+        order.customerPaymentNote = req.body.customerPaymentNote;
+        await order.save();
+      }
+      return res.json({ success: true, order, verificationWindowMinutes: windowMinutes });
+    }
+
+    // First confirmation: transition pending → awaiting_verification.
     order.paymentStatus = 'awaiting_verification';
     order.orderStatus = 'pending';
-    order.paymentSubmittedAt = order.paymentSubmittedAt || new Date();
+    order.paymentSubmittedAt = new Date();
     order.paymentVerificationDeadline = new Date(Date.now() + windowMinutes * 60 * 1000);
 
     if (req.body?.customerPaymentNote !== undefined) {

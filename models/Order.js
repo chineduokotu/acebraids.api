@@ -133,6 +133,10 @@ const orderSchema = new mongoose.Schema({
     type: String,
     default: '',
   },
+  // Client-supplied idempotency key — prevents duplicate orders when a network
+  // retry or double-click fires a second identical checkout request. Optional;
+  // existing orders without this field are excluded from the sparse index.
+  clientIdempotencyKey: { type: String },
   // Stripe dispute/refund tracking — set by webhook handlers.
   disputeState: {
     type: String,
@@ -157,5 +161,8 @@ orderSchema.index({ paymentStatus: 1, createdAt: -1 });
 orderSchema.index({ orderStatus: 1, createdAt: -1 });
 // Customer lookup and order tracking.
 orderSchema.index({ 'guestInfo.email': 1 });
+// Prevent duplicate orders from network retries. sparse=true so existing
+// orders without this field are not affected by the unique constraint.
+orderSchema.index({ clientIdempotencyKey: 1 }, { unique: true, sparse: true });
 
 export const Order = mongoose.model('Order', orderSchema);
