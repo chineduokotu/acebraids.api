@@ -110,8 +110,15 @@ export const sendAdminNewOrderEmail = async (order) => {
 
     const mailOptions = {
       from: { name: 'AceBeautyBraids', address: sender },
-      replyTo: snapshot.guestInfo?.email || sender,
+      replyTo: sender,
       to: { address: adminEmail },
+      headers: {
+        'X-Priority': '1',
+        'Priority': 'urgent',
+        'Importance': 'high',
+        'Auto-Submitted': 'auto-generated',
+        'X-Entity-Ref-ID': orderId,
+      },
       ...message,
     };
 
