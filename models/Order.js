@@ -87,6 +87,9 @@ const orderSchema = new mongoose.Schema({
     qty: { type: Number, required: true, min: 1, validate: Number.isSafeInteger },
   }],
   adminPaymentNotification: { type: adminPaymentNotificationSchema, select: false },
+  adminOrderNotificationSentAt: {
+    type: Date,
+  },
   paymentRef: {
     type: String,
     required: true,

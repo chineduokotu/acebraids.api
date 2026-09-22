@@ -29,11 +29,13 @@ export const priceStripeOrder = async (draft) => {
   let subtotalGbpMinor = 0;
   const items = draft.items.map((item) => {
     const product = catalogue.get(item.product);
-    if (!product || product.isSoldOut) throw invalid('A product in your cart is unavailable. Please review your bag.');
+    if (!product || product.isSoldOut) throw invalid('Sorry, a product in your bag is currently out of stock. Please remove it and choose another product.');
+
     let variant;
     if (product.variants.length) {
       variant = findMatchingVariant(product, item.variant, item.variantId);
-      if (!variant) throw invalid('A selected product option is unavailable. Please review your bag.');
+      if (!variant) throw invalid('Sorry, the selected option is no longer available. Please choose another option to continue.');
+
     }
     const price = variant?.priceOverride ?? product.discountPrice ?? product.price;
     if (!Number.isFinite(price) || price < 0) throw invalid('A product price is unavailable.');

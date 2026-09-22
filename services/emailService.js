@@ -1,5 +1,6 @@
 import { getEmailTransport } from '../config/email.js';
-import { renderOrderEmail } from './orderEmailTemplates.js';
+import { renderOrderEmail, renderAdminNewOrderEmail } from './orderEmailTemplates.js';
+import { Order } from '../models/Order.js';
 
 // Payment approval and shipment use SMTP. Other hooks retain their existing behavior.
 const dispatchOrderEmail = async (event, order) => {
@@ -82,4 +83,76 @@ export const sendPaymentRejectedEmail = async (order) => {
   console.log(`\n[EMAIL SERVICE] Payment rejected notice sent to: ${getRecipient(order)}`);
   console.log(`   Order ${order.trackingCode} payment rejected. Reason: ${order.paymentRejectionReason}\n`);
   return true;
+};
+
+export const sendAdminNewOrderEmail = async (order) => {
+  const orderId = String(order?._id || '');
+  try {
+    const adminEmail = (process.env.ADMIN_ORDER_EMAIL || process.env.ADMIN_NOTIFICATION_EMAIL || '').trim();
+    if (!adminEmail || !/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(adminEmail)) {
+      console.warn('[EMAIL SERVICE] Admin order notification skipped: no valid admin email configured');
+      return false;
+    }
+
+    const transport = getEmailTransport();
+    const sender = process.env.EMAIL_HOST_USER?.trim() || adminEmail;
+
+    // Resolve client URL for admin order link
+    const clientUrl = (
+      process.env.ADMIN_BASE_URL ||
+      (process.env.CLIENT_URL
+        ? process.env.CLIENT_URL.split(',').map((s) => s.trim()).find((u) => u.startsWith('https://')) || process.env.CLIENT_URL.split(',')[0].trim()
+        : 'https://acebraids.vercel.app')
+    ).replace(/\/+$/, '');
+
+    const snapshot = typeof order.toObject === 'function' ? order.toObject() : structuredClone(order);
+    const message = renderAdminNewOrderEmail(snapshot, clientUrl, sender);
+
+    const mailOptions = {
+      from: { name: 'AceBeautyBraids', address: sender },
+      replyTo: snapshot.guestInfo?.email || sender,
+      to: { address: adminEmail },
+      ...message,
+    };
+
+    const result = await transport.sendMail(mailOptions);
+    console.info('[EMAIL SERVICE] Admin new order email accepted', {
+      orderId,
+      messageId: result.messageId,
+      recipient: adminEmail,
+    });
+    return true;
+  } catch (error) {
+    console.warn('[EMAIL SERVICE] Admin new order notification failed', {
+      orderId,
+      code: error.code || 'EMAIL_FAILED',
+      message: error.message,
+    });
+    return false;
+  }
+};
+
+export const notifyAdminNewOrder = async (orderId) => {
+  if (!orderId) return false;
+  try {
+    // Atomic check-and-set: ensure ONLY ONE admin notification is ever dispatched for an order
+    const order = await Order.findOneAndUpdate(
+      { _id: orderId, adminOrderNotificationSentAt: { $exists: false } },
+      { $set: { adminOrderNotificationSentAt: new Date() } },
+      { new: true }
+    );
+
+    if (!order) {
+      // Notification already recorded/sent for this order
+      return false;
+    }
+
+    return await sendAdminNewOrderEmail(order);
+  } catch (error) {
+    console.warn('[EMAIL SERVICE] Could not process admin order notification', {
+      orderId: String(orderId),
+      error: error.message,
+    });
+    return false;
+  }
 };

@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 import { Order } from '../models/Order.js';
 import { stripeIsLive } from '../config/stripe.js';
 import { deductOrderStock, withInventoryTransaction } from './inventoryService.js';
-import { sendPaymentApprovedEmail } from './emailService.js';
+import { sendPaymentApprovedEmail, notifyAdminNewOrder } from './emailService.js';
 import { logger } from '../utils/logger.js';
 
 export const STRIPE_CHECKOUT_EVENTS = new Set([
@@ -91,6 +91,9 @@ export const applyStripeCheckoutEvent = async (event) => {
     if (updated && !event.id.startsWith('evt_test_')) {
       sendPaymentApprovedEmail(order).catch((err) => {
         logger.warn('Failed to dispatch payment confirmation email', { error: err?.message, orderId: String(order._id) });
+      });
+      notifyAdminNewOrder(order._id).catch((err) => {
+        logger.warn('Failed to dispatch admin new order notification', { error: err?.message, orderId: String(order._id) });
       });
     }
     return { updated: Boolean(updated) };

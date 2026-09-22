@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { Order } from '../models/Order.js';
 import { deductOrderStock, restoreOrderStock, withInventoryTransaction } from '../services/inventoryService.js';
 import { logger } from '../utils/logger.js';
@@ -7,6 +8,7 @@ import {
   sendOrderStatusUpdateEmail,
   sendPaymentApprovedEmail,
   sendPaymentRejectedEmail,
+  notifyAdminNewOrder,
 } from '../services/emailService.js';
 
 
@@ -283,3 +285,22 @@ export const deleteOrder = async (req, res) => {
     res.status(error.status || 500).json({ message: error.message });
   }
 };
+
+// @desc    Notify admin of a placed order or payment submission from client
+// @route   POST /api/orders/:id/notify-admin
+// @access  Public
+export const notifyAdminOrderReceived = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id || !mongoose.isObjectIdOrHexString(id)) {
+      return res.status(400).json({ message: 'Invalid order ID' });
+    }
+    // notifyAdminNewOrder is atomic and deduplicated via adminOrderNotificationSentAt.
+    // If webhook or bank transfer already notified admin, this will safely be a no-op.
+    const sent = await notifyAdminNewOrder(id);
+    res.json({ success: true, notified: Boolean(sent) });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+

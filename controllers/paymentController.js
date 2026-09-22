@@ -1,5 +1,5 @@
 import { Order } from '../models/Order.js';
-import { sendOrderConfirmationEmail, sendPaymentPendingEmail } from '../services/emailService.js';
+import { sendOrderConfirmationEmail, sendPaymentPendingEmail, notifyAdminNewOrder } from '../services/emailService.js';
 import { getCheckoutOrigin, getStripe, stripeIsLive } from '../config/stripe.js';
 import { priceStripeOrder } from '../services/stripeOrderPricing.js';
 import { applyStripeCheckoutEvent, STRIPE_CHECKOUT_EVENTS, applyStripeChargeEvent, STRIPE_CHARGE_EVENTS } from '../services/stripeWebhook.js';
@@ -351,6 +351,7 @@ export const confirmBankTransfer = async (req, res) => {
 
     const updatedOrder = await order.save();
     sendPaymentPendingEmail(updatedOrder).catch(console.error);
+    notifyAdminNewOrder(updatedOrder._id).catch(console.error);
 
     res.json({
       success: true,

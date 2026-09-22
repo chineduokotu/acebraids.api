@@ -1,4 +1,4 @@
-﻿import mongoose from 'mongoose';
+import mongoose from 'mongoose';
 import { Product } from '../models/Product.js';
 import { Order } from '../models/Order.js';
 import { InventoryLog } from '../models/InventoryLog.js';
@@ -36,9 +36,18 @@ export const findMatchingVariant = (product, itemVariant, variantId) => {
 };
 
 const stockError = (product, variant, available, status = 400) => {
-  const name = '"' + product.name + '"' + (variant ? ' (' + (variant.label || variant.color || variant.sku || 'selected option') + ')' : '');
-  return invalid(available <= 0 ? name + ' is currently out of stock.' :
-    'Only ' + available + ' unit' + (available === 1 ? '' : 's') + ' of ' + name + ' are currently available.', status, 'INSUFFICIENT_STOCK');
+  const variantLabel = variant ? ' in the selected option' : '';
+  if (available <= 0) {
+    return invalid(
+      'Sorry, \"' + product.name + '\"' + variantLabel + ' is currently out of stock. Please choose another available option or check back soon.',
+      status, 'INSUFFICIENT_STOCK'
+    );
+  }
+  return invalid(
+    'Only ' + available + ' ' + (available === 1 ? 'item' : 'items') + ' of \"' + product.name + '\"' + variantLabel +
+    ' are currently available. Please update the quantity to continue.',
+    status, 'INSUFFICIENT_STOCK'
+  );
 };
 
 export const validateItemsStock = async (items, { session = null } = {}) => {
@@ -55,7 +64,11 @@ export const validateItemsStock = async (items, { session = null } = {}) => {
     const product = catalogue.get(String(objectId(item.product)));
     if (!product) throw invalid('A product in your cart could not be found.', 400, 'INVENTORY_ITEM_UNAVAILABLE');
     const variant = findMatchingVariant(product, item.variant, item.variantId);
-    if (product.variants?.length && !variant) throw invalid('The selected option for "' + product.name + '" is unavailable. Please select it again.', 400, 'INVENTORY_ITEM_UNAVAILABLE');
+    if (product.variants?.length && !variant) throw invalid(
+      'Sorry, the selected option for \"' + product.name + '\" is no longer available. Please choose another option to continue.',
+      400, 'INVENTORY_ITEM_UNAVAILABLE'
+    );
+
     const key = String(product._id) + ':' + (variant?._id || 'base');
     const qty = (quantities.get(key)?.qty || 0) + item.qty;
     const available = product.isSoldOut ? 0 : stockValue(variant ? variant.stock : product.stock);

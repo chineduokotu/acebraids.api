@@ -9,6 +9,7 @@ import {
   approvePayment,
   rejectPayment,
   deleteOrder,
+  notifyAdminOrderReceived,
 } from '../controllers/orderController.js';
 import { protect, adminOnly } from '../middleware/auth.js';
 
@@ -38,5 +39,8 @@ router.route('/:id')
 
 router.route('/:id/status')
   .put(protect, adminOnly, updateOrderStatus);
+
+router.route('/:id/notify-admin')
+  .post(notifyAdminOrderReceived);
 
 export default router;
