@@ -15,10 +15,10 @@ const generateTrackingCode = () => {
 };
 
 const getBankTransferDetails = () => ({
-  bankName: process.env.BANK_NAME || 'AceBeautyBraids Business Bank',
-  accountName: process.env.BANK_ACCOUNT_NAME || 'AceBeautyBraids',
-  accountNumber: process.env.BANK_ACCOUNT_NUMBER || '00000000',
-  sortCode: process.env.BANK_SORT_CODE || '00-00-00',
+  bankName: process.env.BANK_NAME || 'Tide',
+  accountName: process.env.BANK_ACCOUNT_NAME || 'Ace Braids and Extensions',
+  accountNumber: process.env.BANK_ACCOUNT_NUMBER || '33601423',
+  sortCode: process.env.BANK_SORT_CODE || '04-06-05',
   iban: process.env.BANK_IBAN || '',
   bic: process.env.BANK_BIC || '',
   currency: 'GBP',
