@@ -3,7 +3,15 @@ import assert from 'node:assert/strict';
 import nodemailer from 'nodemailer';
 import { getSmtpOptions, resetEmailTransport } from '../config/email.js';
 import { renderOrderEmail } from '../services/orderEmailTemplates.js';
-import { sendPaymentApprovedEmail, sendOrderStatusUpdateEmail } from '../services/emailService.js';
+import {
+  sendPaymentApprovedEmail,
+  sendOrderStatusUpdateEmail,
+  sendOrderConfirmationEmail,
+  sendPaymentPendingEmail,
+  sendPaymentRejectedEmail,
+  sendAdminNewOrderEmail,
+  getAdminNotificationRecipients,
+} from '../services/emailService.js';
 import { approvePayment, updateOrderStatus } from '../controllers/orderController.js';
 import mongoose from 'mongoose';
 import { Order } from '../models/Order.js';
@@ -66,6 +74,16 @@ test('templates include exact subjects, stored totals, details, and escaped cont
   assert.doesNotMatch(shipped.text, /Total paid|payment has been confirmed/);
   order.currency = 'EUR';
   assert.match(renderOrderEmail('payment-approved', order).text, /€105\.99/);
+  order.currency = 'GBP';
+  const confirmation = renderOrderEmail('order-confirmation', order, emailEnv.CLIENT_URL);
+  assert.equal(confirmation.subject, 'Order Placed – Bank Transfer Instructions');
+  assert.match(confirmation.text, /Bank Transfer Instructions:/);
+  assert.match(confirmation.text, /33601423/);
+  assert.match(confirmation.text, /04-06-05/);
+  assert.match(confirmation.html, /Bank Transfer Payment Details/);
+  const pending = renderOrderEmail('bank-transfer-pending', order, emailEnv.CLIENT_URL);
+  assert.equal(pending.subject, 'Bank Transfer Received – Awaiting Verification');
+  assert.match(pending.text, /verifying your payment/);
 });
 
 test('optional tracking fields and invalid client URL are omitted gracefully', () => {
@@ -258,5 +276,56 @@ test('controller hooks and background SMTP isolation (no database or network)', 
     send = async () => ({ accepted: [], rejected: ['customer@example.com'] });
     assert.equal(await sendPaymentApprovedEmail(fixture()), false);
     assert.equal(transportFactory.mock.callCount(), 1);
+  });
+
+  await t.test('order confirmation and bank transfer pending emails dispatch expected messages', async () => {
+    messages = [];
+    send = async () => accepted;
+
+    // Bank transfer order confirmation
+    const bankOrder = fixture();
+    bankOrder.paymentMethod = 'bank_transfer';
+    assert.equal(await sendOrderConfirmationEmail(bankOrder), true);
+    await tick();
+    assert.equal(messages.length, 1);
+    assert.equal(messages[0].subject, 'Order Placed – Bank Transfer Instructions');
+    assert.match(messages[0].text, /33601423/);
+
+    // Stripe pending order does not send premature confirmation
+    const stripeOrder = fixture();
+    stripeOrder.paymentMethod = 'stripe';
+    stripeOrder.paymentStatus = 'pending';
+    assert.equal(await sendOrderConfirmationEmail(stripeOrder), false);
+    assert.equal(messages.length, 1);
+
+    // Bank transfer pending verification notice
+    assert.equal(await sendPaymentPendingEmail(bankOrder), true);
+    await tick();
+    assert.equal(messages.length, 2);
+    assert.equal(messages[1].subject, 'Bank Transfer Received – Awaiting Verification');
+
+    // Admin new order email dispatches to configured admin recipients
+    process.env.ADMIN_ORDER_EMAIL = 'admin1@example.com, admin2@example.com';
+    const recipients = getAdminNotificationRecipients();
+    assert.deepEqual(recipients, ['admin1@example.com', 'admin2@example.com']);
+    assert.equal(await sendAdminNewOrderEmail(bankOrder), true);
+    assert.equal(messages.length, 3);
+    assert.match(messages[2].subject, /New Order Received – Order #ABB-UK-TEST12/);
+    assert.equal(messages[2].to.length, 2);
+    delete process.env.ADMIN_ORDER_EMAIL;
+
+    // Falls back to ADMIN_NOTIFICATION_EMAIL if ADMIN_ORDER_EMAIL is unset
+    process.env.ADMIN_NOTIFICATION_EMAIL = 'fallback@example.com';
+    assert.deepEqual(getAdminNotificationRecipients(), ['fallback@example.com']);
+    delete process.env.ADMIN_NOTIFICATION_EMAIL;
+
+    // Bank transfer rejected notice dispatches to customer
+    bankOrder.paymentStatus = 'rejected';
+    bankOrder.paymentRejectionReason = 'Payment could not be verified on our bank statement';
+    assert.equal(await sendPaymentRejectedEmail(bankOrder), true);
+    await tick();
+    assert.equal(messages.length, 4);
+    assert.equal(messages[3].subject, 'Payment Unverified – Order Cancelled');
+    assert.match(messages[3].text, /Payment could not be verified on our bank statement/);
   });
 });

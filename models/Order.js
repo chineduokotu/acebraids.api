@@ -90,6 +90,18 @@ const orderSchema = new mongoose.Schema({
   adminOrderNotificationSentAt: {
     type: Date,
   },
+  customerConfirmationEmailSentAt: {
+    type: Date,
+  },
+  customerPendingEmailSentAt: {
+    type: Date,
+  },
+  customerPaymentApprovedEmailSentAt: {
+    type: Date,
+  },
+  customerPaymentRejectedEmailSentAt: {
+    type: Date,
+  },
   paymentRef: {
     type: String,
     required: true,

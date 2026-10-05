@@ -298,6 +298,20 @@ export const notifyAdminOrderReceived = async (req, res) => {
     // notifyAdminNewOrder is atomic and deduplicated via adminOrderNotificationSentAt.
     // If webhook or bank transfer already notified admin, this will safely be a no-op.
     const sent = await notifyAdminNewOrder(id);
+
+    // If order is confirmed paid (e.g. Stripe checkout return) and customer receipt email
+    // hasn't been dispatched yet, trigger it (sendPaymentApprovedEmail is atomically deduplicated).
+    const paidOrder = await Order.findOne({
+      _id: id,
+      paymentStatus: 'paid',
+      customerPaymentApprovedEmailSentAt: { $exists: false },
+    });
+    if (paidOrder) {
+      sendPaymentApprovedEmail(paidOrder).catch((err) => {
+        logger.warn('Failed to dispatch payment confirmation email from client return hook', { error: err?.message, orderId: id });
+      });
+    }
+
     res.json({ success: true, notified: Boolean(sent) });
   } catch (error) {
     res.status(500).json({ message: error.message });

@@ -16,13 +16,49 @@ const getTrackingUrl = (clientUrl, reference) => {
 
 export const renderOrderEmail = (event, order, clientUrl, senderAddress = '') => {
   const payment = event === 'payment-approved';
-  if (!payment && event !== 'shipped') throw new Error('Unsupported email event');
+  const isShipped = event === 'shipped';
+  const isPendingTransfer = event === 'bank-transfer-pending';
+  const isOrderConfirmation = event === 'order-confirmation';
+  const isPaymentRejected = event === 'payment-rejected';
 
-  const subject = payment ? 'Order Received & Processing' : 'Your Order Has Shipped';
+  if (!payment && !isShipped && !isPendingTransfer && !isOrderConfirmation && !isPaymentRejected) {
+    throw new Error('Unsupported email event');
+  }
+
+  const subject = payment
+    ? 'Order Received & Processing'
+    : isShipped
+      ? 'Your Order Has Shipped'
+      : isPendingTransfer
+        ? 'Bank Transfer Received – Awaiting Verification'
+        : isPaymentRejected
+          ? 'Payment Unverified – Order Cancelled'
+          : (order.paymentMethod === 'bank_transfer'
+              ? 'Order Placed – Bank Transfer Instructions'
+              : 'Your Order Confirmation');
+
   const intro = payment
     ? "Your payment has been confirmed. We've received your order and are now preparing it."
-    : "Your order has been shipped. You'll find your order summary and available tracking details below.";
-  const status = payment ? 'Payment confirmed · Processing' : 'Shipped';
+    : isShipped
+      ? "Your order has been shipped. You'll find your order summary and available tracking details below."
+      : isPendingTransfer
+        ? "Thank you! We have received your notice that you have sent your bank transfer. Our team is verifying your payment and will update you once confirmed."
+        : isPaymentRejected
+          ? `We were unable to verify your bank transfer payment for this order.${order.paymentRejectionReason ? ` Reason: ${order.paymentRejectionReason}.` : ''} If you have already sent the transfer or believe this is an error, please reply directly to this email so our team can assist you.`
+          : (order.paymentMethod === 'bank_transfer'
+              ? "Thank you for your order! Please transfer the total amount using the bank details below so we can process and ship your order."
+              : "Thank you for your order! We have received your order details.");
+
+  const status = payment
+    ? 'Payment confirmed · Processing'
+    : isShipped
+      ? 'Shipped'
+      : isPendingTransfer
+        ? 'Awaiting Payment Verification'
+        : isPaymentRejected
+          ? 'Payment Rejected · Cancelled'
+          : 'Pending Payment';
+
   const name = order.guestInfo?.firstName || 'there';
   const orderId = String(order._id || '');
   const money = new Intl.NumberFormat('en-GB', { style: 'currency', currency: order.currency || 'GBP' });
@@ -48,16 +84,35 @@ export const renderOrderEmail = (event, order, clientUrl, senderAddress = '') =>
     ...(order.trackingCode ? [['Order reference', order.trackingCode]] : []),
     ['Order ID', orderId],
     ['Status', status],
+    ...(isPaymentRejected && order.paymentRejectionReason ? [['Rejection Reason', order.paymentRejectionReason]] : []),
     ...(payment && order.paymentRef ? [['Payment reference', order.paymentRef]] : []),
-    ...(!payment && order.carrier ? [['Carrier', order.carrier]] : []),
-    ...(!payment && order.trackingCode ? [['Tracking / order reference', order.trackingCode]] : []),
+    ...(!payment && !isPaymentRejected && order.carrier ? [['Carrier', order.carrier]] : []),
+    ...(!payment && !isPaymentRejected && order.trackingCode ? [['Tracking / order reference', order.trackingCode]] : []),
   ];
+
+  const bankTransferInstructions = (isPendingTransfer || isOrderConfirmation) && order.paymentMethod === 'bank_transfer' ? [
+    ['Bank Name', process.env.BANK_NAME || 'Tide'],
+    ['Account Name', process.env.BANK_ACCOUNT_NAME || 'Ace Braids and Extensions'],
+    ['Account Number', process.env.BANK_ACCOUNT_NUMBER || '33601423'],
+    ['Sort Code', process.env.BANK_SORT_CODE || '04-06-05'],
+    ['Payment Reference', order.paymentRef || 'N/A'],
+    ['Amount to Send', format(order.total)],
+  ] : [];
+
   const trackingUrl = getTrackingUrl(clientUrl, order.trackingCode || orderId);
-  const button = payment ? 'View Order' : 'Track Your Order';
+  const button = payment
+    ? 'View Order'
+    : isShipped
+      ? 'Track Your Order'
+      : 'View Order Details';
   const notificationReason = 'You are receiving this order update because an order was placed with AceBeautyBraids using this email address.';
   const footer = `Questions about this order? Reply to this email${senderAddress ? ` to contact AceBeautyBraids at ${senderAddress}` : ''}.`;
   const text = [
     subject, `Hi ${name},`, intro,
+    ...(bankTransferInstructions.length ? [
+      'Bank Transfer Instructions:',
+      ...bankTransferInstructions.map(([label, value]) => `${label}: ${value}`),
+    ] : []),
     ...details.map(([label, value]) => `${label}: ${value}`),
     'Order summary:',
     ...items.map(item => `${item.name}${item.variant ? ` (${item.variant})` : ''} — ${item.qty} × ${item.price} = ${item.total}`),
@@ -75,6 +130,14 @@ export const renderOrderEmail = (event, order, clientUrl, senderAddress = '') =>
 <p style="color:#EC1E8C;font-size:20px;font-weight:bold;">AceBeautyBraids</p>
 <h1 style="font-size:24px;line-height:1.3;">${subject}</h1>
 <p>Hi ${escapeHtml(name)},</p><p style="line-height:1.6;">${escapeHtml(intro)}</p>
+${bankTransferInstructions.length ? `
+<div style="background:#fff7ed;border-left:4px solid #f97316;padding:14px 16px;margin:20px 0;border-radius:4px;">
+  <h2 style="font-size:15px;margin:0 0 10px;color:#9a3412;">Bank Transfer Payment Details</h2>
+  <table width="100%" cellspacing="0" cellpadding="0" style="font-size:13px;border-collapse:collapse;">
+    ${bankTransferInstructions.map(([label, value]) => `<tr><td style="padding:4px 0;font-weight:600;color:#7c2d12;width:40%;">${escapeHtml(label)}:</td><td style="padding:4px 0;font-weight:700;color:#111827;">${escapeHtml(value)}</td></tr>`).join('')}
+  </table>
+</div>
+` : ''}
 ${details.map(([label, value]) => `<p><strong>${label}:</strong> ${escapeHtml(value)}</p>`).join('')}
 <h2 style="font-size:18px;">Order summary</h2>
 <table width="100%" cellspacing="0" cellpadding="0" style="font-size:13px;border-collapse:collapse;overflow-wrap:anywhere;">

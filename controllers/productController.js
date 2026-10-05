@@ -220,6 +220,10 @@ export const createProduct = async (req, res) => {
       lowStockThreshold,
     } = req.body;
 
+    if (!category || typeof category !== 'string' || !category.trim()) {
+      return res.status(400).json({ message: 'Please select a valid category for this product.' });
+    }
+
     const generatedSlug = (slug || name)
       .toLowerCase()
       .trim()
@@ -286,6 +290,10 @@ export const updateProduct = async (req, res) => {
       stock,
       lowStockThreshold,
     } = req.body;
+
+    if (category !== undefined && (!category || typeof category !== 'string' || !category.trim())) {
+      return res.status(400).json({ message: 'Please select a valid category for this product.' });
+    }
 
     const updatedProduct = await withInventoryTransaction(async (session) => {
       const product = await Product.findById(req.params.id).session(session);
