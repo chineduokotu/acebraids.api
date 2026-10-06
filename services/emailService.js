@@ -1,7 +1,85 @@
 import mongoose from 'mongoose';
 import { getEmailTransport } from '../config/email.js';
+import { isBrevoConfigured, sendViaBrevoApi } from './brevoClient.js';
 import { renderOrderEmail, renderAdminNewOrderEmail } from './orderEmailTemplates.js';
 import { Order } from '../models/Order.js';
+
+const NON_RETRYABLE_CODES = new Set([
+  'EMAIL_RECIPIENT',
+  'TEMPLATE_RENDER_FAILED',
+]);
+
+const isFallbackEligible = (error) => {
+  if (!error) return false;
+  if (NON_RETRYABLE_CODES.has(error.code)) return false;
+  if (typeof error.message === 'string' && /invalid recipient|syntax error/i.test(error.message)) {
+    return false;
+  }
+  return true;
+};
+
+export const sendEmailWithFallback = async (mailOptions, meta = {}) => {
+  const { event = 'unknown', orderId = '' } = meta;
+  let googleError = null;
+
+  // 1. Primary Provider: Google SMTP
+  try {
+    const transport = getEmailTransport();
+    const result = await transport.sendMail(mailOptions);
+    if (!result.accepted?.length) {
+      throw Object.assign(new Error('SMTP did not accept the recipient'), { code: 'EMAIL_REJECTED' });
+    }
+    console.info('[EMAIL SERVICE] Primary provider (Google SMTP) accepted', {
+      event,
+      orderId,
+      provider: 'google',
+      messageId: result.messageId,
+    });
+    return { success: true, provider: 'google', messageId: result.messageId };
+  } catch (err) {
+    googleError = err;
+    console.warn('[EMAIL SERVICE] Primary provider (Google SMTP) failed', {
+      event,
+      orderId,
+      code: err.code || 'EMAIL_FAILED',
+    });
+  }
+
+  // 2. Permanent error validation
+  if (!isFallbackEligible(googleError)) {
+    return { success: false, provider: 'none', code: googleError?.code || 'EMAIL_FAILED' };
+  }
+
+  // 3. Fallback configuration check
+  if (!isBrevoConfigured()) {
+    return { success: false, provider: 'google', code: googleError?.code || 'EMAIL_FAILED' };
+  }
+
+  // 4. Fallback Provider: Brevo REST API
+  try {
+    console.info('[EMAIL SERVICE] Triggering fallback delivery via Brevo...', {
+      event,
+      orderId,
+      primaryFailure: googleError.code || 'SMTP_FAILED',
+    });
+    const brevoResult = await sendViaBrevoApi(mailOptions, meta);
+    console.info('[EMAIL SERVICE] Fallback provider (Brevo) delivered successfully', {
+      event,
+      orderId,
+      provider: 'brevo',
+      messageId: brevoResult.messageId,
+    });
+    return { success: true, provider: 'brevo', messageId: brevoResult.messageId };
+  } catch (brevoErr) {
+    console.warn('[EMAIL SERVICE] Both primary and fallback providers failed', {
+      event,
+      orderId,
+      primaryCode: googleError.code || 'EMAIL_FAILED',
+      fallbackCode: brevoErr.code || 'BREVO_FAILED',
+    });
+    return { success: false, provider: 'none', code: brevoErr.code || 'EMAIL_FAILED' };
+  }
+};
 
 const resolveClientUrl = () => {
   const envUrl = process.env.CLIENT_URL;
@@ -11,7 +89,7 @@ const resolveClientUrl = () => {
   return httpsUrl || urls[0] || 'https://acebraids.vercel.app';
 };
 
-// Customer order updates (confirmation, pending transfer, approved payment, shipment) use SMTP.
+// Customer order updates (confirmation, pending transfer, approved payment, shipment) use SMTP with Brevo fallback.
 const dispatchOrderEmail = async (event, order) => {
   const orderId = String(order?._id || '');
   try {
@@ -24,8 +102,7 @@ const dispatchOrderEmail = async (event, order) => {
           if (typeof recipient !== 'string' || !/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(recipient.trim())) {
             throw Object.assign(new Error('Missing or invalid recipient'), { code: 'EMAIL_RECIPIENT' });
           }
-          const transport = getEmailTransport();
-          const sender = (process.env.EMAIL_HOST_USER || 'comagtech2@gmail.com').trim();
+          const sender = (process.env.BREVO_SENDER_EMAIL || process.env.GOOGLE_SMTP_USER || process.env.EMAIL_HOST_USER || 'comagtech2@gmail.com').trim();
           const adminRecipients = getAdminNotificationRecipients();
           const bccList = [];
           if (event === 'payment-approved') {
@@ -42,17 +119,20 @@ const dispatchOrderEmail = async (event, order) => {
             from: { name: 'AceBeautyBraids', address: sender },
             replyTo: sender,
             to: { address: recipient.trim() },
+            headers: {
+              'X-Entity-Ref-ID': `${orderId}-${event}`,
+            },
             ...message,
           };
           if (bccList.length) {
             mailOptions.bcc = bccList;
           }
 
-          const result = await transport.sendMail(mailOptions);
-          if (!result.accepted?.length) {
-            throw Object.assign(new Error('SMTP did not accept the recipient'), { code: 'EMAIL_REJECTED' });
+          const delivery = await sendEmailWithFallback(mailOptions, { event, orderId });
+          if (!delivery.success) {
+            throw Object.assign(new Error('All email delivery attempts failed'), { code: delivery.code || 'EMAIL_FAILED' });
           }
-          console.info('[EMAIL SERVICE] SMTP accepted', { event, orderId, messageId: result.messageId, notifiedAdmin: bccList.length > 0 });
+          console.info('[EMAIL SERVICE] Notification delivered', { event, orderId, provider: delivery.provider, notifiedAdmin: bccList.length > 0 });
           resolve(true);
         } catch (error) {
           // Never log SMTP messages, credentials, bodies, or customer addresses.
@@ -176,8 +256,7 @@ export const sendAdminNewOrderEmail = async (order) => {
       return false;
     }
 
-    const transport = getEmailTransport();
-    const sender = process.env.EMAIL_HOST_USER?.trim() || adminRecipients[0];
+    const sender = (process.env.BREVO_SENDER_EMAIL || process.env.GOOGLE_SMTP_USER || process.env.EMAIL_HOST_USER || adminRecipients[0]).trim();
 
     // Resolve client URL for admin order link
     const clientUrl = (
@@ -199,15 +278,19 @@ export const sendAdminNewOrderEmail = async (order) => {
         'Priority': 'urgent',
         'Importance': 'high',
         'Auto-Submitted': 'auto-generated',
-        'X-Entity-Ref-ID': orderId,
+        'X-Entity-Ref-ID': `${orderId}-admin-order`,
       },
       ...message,
     };
 
-    const result = await transport.sendMail(mailOptions);
-    console.info('[EMAIL SERVICE] Admin new order email accepted', {
+    const delivery = await sendEmailWithFallback(mailOptions, { event: 'admin-new-order', orderId });
+    if (!delivery.success) {
+      return false;
+    }
+    console.info('[EMAIL SERVICE] Admin new order email delivered', {
       orderId,
-      messageId: result.messageId,
+      provider: delivery.provider,
+      messageId: delivery.messageId,
       recipients: adminRecipients,
     });
     return true;

@@ -328,4 +328,64 @@ test('controller hooks and background SMTP isolation (no database or network)', 
     assert.equal(messages[3].subject, 'Payment Unverified – Order Cancelled');
     assert.match(messages[3].text, /Payment could not be verified on our bank statement/);
   });
+
+  await t.test('Brevo fallback triggers when Google SMTP fails with network/socket/auth errors', async () => {
+    // Setup Brevo mock
+    const originalFetch = globalThis.fetch;
+    const brevoCalls = [];
+    globalThis.fetch = async (url, options) => {
+      brevoCalls.push({ url, options: JSON.parse(options.body) });
+      return {
+        ok: true,
+        status: 201,
+        json: async () => ({ messageId: '<brevo-test-msg-123>' }),
+      };
+    };
+
+    process.env.BREVO_API_KEY = 'xkeysib-test-key-mock';
+    process.env.BREVO_SENDER_EMAIL = 'comagtech2@gmail.com';
+    process.env.BREVO_SENDER_NAME = 'AceBeautyBraids';
+
+    try {
+      // 1. When Google SMTP succeeds: Brevo is NOT called
+      send = async () => accepted;
+      const bankOrder = fixture();
+      assert.equal(await sendOrderConfirmationEmail(bankOrder), true);
+      await tick();
+      assert.equal(brevoCalls.length, 0); // Brevo should NOT be invoked
+
+      // 2. When Google SMTP fails with ENETUNREACH / ESOCKET (Render scenario):
+      send = async () => {
+        throw Object.assign(new Error('connect ENETUNREACH 2607:f8b0:400e:c02::6d:587'), { code: 'ESOCKET' });
+      };
+      const pendingOrder = fixture();
+      pendingOrder._id = '000000000000000000000099';
+      assert.equal(await sendPaymentPendingEmail(pendingOrder), true);
+      await tick();
+
+      // Brevo MUST have been called and delivered
+      assert.equal(brevoCalls.length, 1);
+      assert.equal(brevoCalls[0].options.sender.email, 'comagtech2@gmail.com');
+      assert.equal(brevoCalls[0].options.sender.name, 'AceBeautyBraids');
+      assert.equal(brevoCalls[0].options.to[0].email, 'customer@example.com');
+      assert.equal(brevoCalls[0].options.subject, 'Bank Transfer Received – Awaiting Verification');
+
+      // 3. When both Google and Brevo fail: returns false cleanly without crashing
+      globalThis.fetch = async () => ({
+        ok: false,
+        status: 400,
+        json: async () => ({ message: 'Brevo mock failure' }),
+      });
+      const approvedOrder = fixture();
+      approvedOrder._id = '000000000000000000000088';
+      assert.equal(await sendPaymentApprovedEmail(approvedOrder), false);
+      await tick();
+    } finally {
+      globalThis.fetch = originalFetch;
+      delete process.env.BREVO_API_KEY;
+      delete process.env.BREVO_SENDER_EMAIL;
+      delete process.env.BREVO_SENDER_NAME;
+    }
+  });
 });
+
